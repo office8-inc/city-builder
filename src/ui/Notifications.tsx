@@ -6,11 +6,11 @@ export function Notifications() {
   if (notifications.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1 pointer-events-auto">
+    <div className="flex flex-col gap-1.5 pointer-events-auto">
       {notifications.map(n => (
         <div
           key={n.id}
-          className="bg-yellow-600/90 text-white px-4 py-1.5 rounded shadow-lg text-sm animate-pulse"
+          className="px-4 py-2 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 text-white text-sm font-medium shadow-lg animate-pulse"
         >
           {n.message}
         </div>

@@ -20,7 +20,7 @@ export function Toolbar() {
   const money = useGameStore(s => s.money);
 
   return (
-    <div className="flex items-center justify-center gap-1 px-4 py-2 bg-gray-900/80 backdrop-blur-sm">
+    <div className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 shadow-lg">
       {TOOLS.map(({ tool, label, cost }) => {
         const isSelected = selectedTool === tool;
         const canAfford = cost === undefined || money >= cost;
@@ -32,20 +32,20 @@ export function Toolbar() {
             onClick={() => setSelectedTool(tool)}
             disabled={!canAfford && tool !== 'none' && tool !== 'bulldoze'}
             className={`
-              flex flex-col items-center px-2 py-1.5 rounded text-xs transition-colors min-w-[60px]
+              flex flex-col items-center px-3 py-2 rounded-lg text-xs transition-all min-w-[64px]
               ${isSelected
-                ? 'bg-blue-600 text-white'
+                ? 'bg-blue-500/80 text-white shadow-md shadow-blue-500/30 scale-105 border border-blue-400/50'
                 : canAfford
-                  ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                  ? 'bg-white/10 text-gray-200 hover:bg-white/20 hover:scale-102 border border-transparent'
+                  : 'bg-black/20 text-gray-500 cursor-not-allowed border border-transparent'
               }
             `}
             title={cost !== undefined ? `${label} - $${cost}` : label}
           >
-            <span className="text-lg">{icon}</span>
-            <span>{label}</span>
+            <span className="text-xl leading-none mb-0.5">{icon}</span>
+            <span className="font-medium">{label}</span>
             {cost !== undefined && (
-              <span className="text-[10px] text-gray-400">${cost}</span>
+              <span className={`text-[10px] ${isSelected ? 'text-blue-200' : 'text-gray-400'}`}>${cost}</span>
             )}
           </button>
         );

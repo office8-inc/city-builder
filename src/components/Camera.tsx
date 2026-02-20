@@ -7,14 +7,16 @@ export function Camera() {
   return (
     <OrbitControls
       makeDefault
-      minDistance={10}
-      maxDistance={100}
-      maxPolarAngle={Math.PI / 3}
-      minPolarAngle={Math.PI / 8}
+      minDistance={8}
+      maxDistance={90}
+      maxPolarAngle={Math.PI / 2.8}
+      minPolarAngle={Math.PI / 10}
       target={[0, 0, 0]}
       enableDamping
-      dampingFactor={0.1}
-      // Limit pan to roughly the grid area
+      dampingFactor={0.08}
+      rotateSpeed={0.5}
+      zoomSpeed={1.2}
+      panSpeed={0.8}
       onChange={(e) => {
         if (e?.target) {
           const ctrl = e.target;

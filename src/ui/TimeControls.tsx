@@ -1,32 +1,33 @@
 import { useGameStore } from '../game/store.ts';
 import type { GameSpeed } from '../game/types.ts';
 
-const SPEEDS: Array<{ speed: GameSpeed; label: string }> = [
-  { speed: 0, label: '⏸' },
-  { speed: 1, label: '▶' },
-  { speed: 2, label: '⏩' },
-  { speed: 4, label: '⏭' },
+const SPEEDS: Array<{ speed: GameSpeed; label: string; icon: string }> = [
+  { speed: 0, label: 'Pause', icon: '⏸' },
+  { speed: 1, label: '1x', icon: '▶' },
+  { speed: 2, label: '2x', icon: '⏩' },
+  { speed: 4, label: '4x', icon: '⏭' },
 ];
 
 export function TimeControls() {
-  const speed = useGameStore(s => s.speed);
+  const currentSpeed = useGameStore(s => s.speed);
   const setSpeed = useGameStore(s => s.setSpeed);
 
   return (
     <div className="flex gap-1">
-      {SPEEDS.map(({ speed: s, label }) => (
+      {SPEEDS.map(({ speed, label, icon }) => (
         <button
-          key={s}
-          onClick={() => setSpeed(s)}
+          key={speed}
+          onClick={() => setSpeed(speed)}
           className={`
-            px-2 py-0.5 rounded text-sm transition-colors
-            ${speed === s
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            w-8 h-8 rounded-lg text-sm flex items-center justify-center transition-all
+            ${currentSpeed === speed
+              ? 'bg-white/25 text-white shadow-inner border border-white/20'
+              : 'bg-white/5 text-white/60 hover:bg-white/15 border border-transparent'
             }
           `}
+          title={label}
         >
-          {label}
+          {icon}
         </button>
       ))}
     </div>
