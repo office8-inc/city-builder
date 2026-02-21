@@ -1,12 +1,12 @@
 import { useRef, useEffect } from 'react';
 import { useGameStore } from '../game/store.ts';
-import { GRID_SIZE, BUILDING_COLORS } from '../game/constants.ts';
+import { GRID_SIZE, TERRAIN_COLORS } from '../game/constants.ts';
 
 export function MiniMap() {
-  const grid = useGameStore(s => s.grid);
+  const map = useGameStore(s => s.map);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const size = 130;
+  const size = 140;
   const scale = size / GRID_SIZE;
 
   useEffect(() => {
@@ -16,28 +16,36 @@ export function MiniMap() {
     if (!ctx) return;
 
     // Background
-    ctx.fillStyle = '#2a3a2a';
+    ctx.fillStyle = '#1a2a1a';
     ctx.fillRect(0, 0, size, size);
 
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let z = 0; z < GRID_SIZE; z++) {
-        const tile = grid[x][z];
+        const tile = map[x][z];
         const px = x * scale;
         const py = z * scale;
 
-        if (tile.building) {
-          ctx.fillStyle = BUILDING_COLORS[tile.building.type];
+        // Terrain base color
+        const baseColor = TERRAIN_COLORS[tile.terrain] ?? '#5a9e3e';
+
+        // Darken based on height for depth
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
+
+        // Stations
+        if (tile.stationId) {
+          ctx.fillStyle = '#ff4444';
           ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
-        } else if (tile.terrain === 'water') {
-          ctx.fillStyle = '#3a7bd5';
-          ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
-        } else {
-          ctx.fillStyle = '#4a7a38';
+        }
+
+        // Tracks
+        if (tile.trackIds.length > 0) {
+          ctx.fillStyle = '#888888';
           ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
         }
       }
     }
-  }, [grid, scale]);
+  }, [map, scale]);
 
   return (
     <div className="rounded-xl overflow-hidden border border-white/10 shadow-lg bg-black/40 backdrop-blur-md p-1.5">

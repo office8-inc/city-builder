@@ -1,118 +1,73 @@
 import { create } from 'zustand';
-import type { GameState, Tile, ToolType, GameSpeed } from './types.ts';
-import { GRID_SIZE, INITIAL_MONEY, BUILDING_COSTS, DAYS_PER_MONTH, MONTHS_PER_YEAR } from './constants.ts';
-import {
-  countBuildings,
-  calculateMaxPopulation,
-  calculateTotalJobs,
-  calculateHappiness,
-  calculateDemand,
-  calculateMonthlyIncome,
-  calculateMonthlyExpenses,
-  simulatePopulationGrowth,
-  ageBuildingsAndGrow,
-  createBuilding,
-} from './simulation.ts';
-import { isValidGridPosition } from '../utils/grid.ts';
-
-function createInitialGrid(): Tile[][] {
-  const grid: Tile[][] = [];
-  for (let x = 0; x < GRID_SIZE; x++) {
-    grid[x] = [];
-    for (let z = 0; z < GRID_SIZE; z++) {
-      // Add some water features
-      const distFromCenter = Math.sqrt((x - 45) ** 2 + (z - 45) ** 2);
-      const isWater = distFromCenter < 5;
-      // Add a river
-      const isRiver = Math.abs(z - (32 + Math.sin(x / 5) * 3)) < 1.5 && x > 40;
-
-      grid[x][z] = {
-        terrain: isWater || isRiver ? 'water' : 'grass',
-        building: null,
-      };
-    }
-  }
-  return grid;
-}
+import type {
+  GameState,
+  ToolType,
+  GameSpeed,
+  TrackSegment,
+  Station,
+  Train,
+  Building,
+  Subsidiary,
+  Finance,
+  GameTime,
+} from './types.ts';
+import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR } from './constants.ts';
+import { generateTerrain } from './terrain.ts';
+import { advanceTime } from './simulation.ts';
 
 let nextNotificationId = 1;
+let nextEntityId = 1;
+function genId(prefix: string): string {
+  return `${prefix}_${nextEntityId++}`;
+}
+
+const initialFinance: Finance = {
+  cash: INITIAL_CASH,
+  debt: 0,
+  quarterlyIncome: { railFare: 0, subsidiary: 0, other: 0 },
+  quarterlyExpenses: {
+    trackMaintenance: 0,
+    trainMaintenance: 0,
+    staffCost: 0,
+    subsidiaryRunning: 0,
+    interestPayment: 0,
+  },
+};
+
+const initialTime: GameTime = {
+  year: INITIAL_YEAR,
+  month: 4,
+  day: 1,
+  hour: 6,
+  minute: 0,
+};
 
 export const useGameStore = create<GameState>((set, get) => ({
-  grid: createInitialGrid(),
-  money: INITIAL_MONEY,
+  // Map
+  map: generateTerrain(42),
+  mapSize: GRID_SIZE,
+
+  // Entities
+  tracks: new Map<string, TrackSegment>(),
+  stations: new Map<string, Station>(),
+  trains: new Map<string, Train>(),
+  buildings: new Map<string, Building>(),
+  subsidiaries: new Map<string, Subsidiary>(),
+
+  // Economy
+  finance: { ...initialFinance },
   population: 0,
-  jobs: 0,
-  happiness: 50,
-  date: { year: 2024, month: 1, day: 1 },
+
+  // Time
+  gameTime: { ...initialTime },
   speed: 1,
-  demand: { residential: 50, commercial: 30, industrial: 30 },
+
+  // UI
   selectedTool: 'none',
-  notifications: [],
   hoveredTile: null,
-  totalResidential: 0,
-  totalCommercial: 0,
-  totalIndustrial: 0,
-  monthlyIncome: 0,
-  monthlyExpenses: 0,
+  notifications: [],
 
-  placeBuilding: (x: number, z: number) => {
-    const state = get();
-    const tool = state.selectedTool;
-    if (tool === 'none' || tool === 'bulldoze') return;
-
-    if (!isValidGridPosition(x, z)) return;
-
-    const tile = state.grid[x][z];
-    if (tile.terrain === 'water') return;
-    if (tile.building !== null) return;
-
-    const cost = BUILDING_COSTS[tool];
-    if (state.money < cost) {
-      get().addNotification('Not enough money!');
-      return;
-    }
-
-    const newGrid = state.grid.map(row => row.map(t => ({ ...t })));
-    newGrid[x][z] = {
-      ...newGrid[x][z],
-      building: createBuilding(tool),
-    };
-
-    const counts = countBuildings(newGrid);
-    const totalJobs = calculateTotalJobs(newGrid);
-
-    set({
-      grid: newGrid,
-      money: state.money - cost,
-      totalResidential: counts.residential,
-      totalCommercial: counts.commercial,
-      totalIndustrial: counts.industrial,
-      jobs: totalJobs,
-    });
-  },
-
-  bulldoze: (x: number, z: number) => {
-    const state = get();
-    if (!isValidGridPosition(x, z)) return;
-
-    const tile = state.grid[x][z];
-    if (tile.building === null) return;
-
-    const newGrid = state.grid.map(row => row.map(t => ({ ...t })));
-    newGrid[x][z] = { ...newGrid[x][z], building: null };
-
-    const counts = countBuildings(newGrid);
-    const totalJobs = calculateTotalJobs(newGrid);
-
-    set({
-      grid: newGrid,
-      money: state.money + 5, // small refund
-      totalResidential: counts.residential,
-      totalCommercial: counts.commercial,
-      totalIndustrial: counts.industrial,
-      jobs: totalJobs,
-    });
-  },
+  // === Actions ===
 
   setSpeed: (speed: GameSpeed) => set({ speed }),
 
@@ -125,7 +80,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     set(state => ({
       notifications: [...state.notifications.slice(-4), { id, message, timestamp: Date.now() }],
     }));
-    // Auto-dismiss after 4 seconds
     setTimeout(() => {
       get().dismissNotification(id);
     }, 4000);
@@ -141,88 +95,26 @@ export const useGameStore = create<GameState>((set, get) => ({
     const state = get();
     if (state.speed === 0) return;
 
-    const newDate = { ...state.date };
-    newDate.day++;
+    // Each tick advances time by 10 minutes * speed
+    const minutesPerTick = 10;
+    const newTime = advanceTime(state.gameTime, minutesPerTick);
 
-    let newMoney = state.money;
-    let newPopulation = state.population;
-    let populationMilestone = false;
+    set({ gameTime: newTime });
+  },
 
-    // Age buildings daily
-    const newGrid = state.grid.map(row => row.map(t => ({
-      ...t,
-      building: t.building ? { ...t.building } : null,
-    })));
-    ageBuildingsAndGrow(newGrid);
+  placeTrack: (_startX: number, _startZ: number, _endX: number, _endZ: number) => {
+    // Stub — will be implemented in Step 2
+    void genId;
+    get().addNotification('線路敷設は次のアップデートで実装予定です');
+  },
 
-    // Monthly processing
-    if (newDate.day > DAYS_PER_MONTH) {
-      newDate.day = 1;
-      newDate.month++;
+  buildStation: (_x: number, _z: number) => {
+    // Stub — will be implemented in Step 2
+    get().addNotification('駅建設は次のアップデートで実装予定です');
+  },
 
-      if (newDate.month > MONTHS_PER_YEAR) {
-        newDate.month = 1;
-        newDate.year++;
-      }
-
-      const counts = countBuildings(newGrid);
-      const maxPop = calculateMaxPopulation(newGrid);
-      const totalJobs = calculateTotalJobs(newGrid);
-      const happiness = calculateHappiness(
-        state.population,
-        totalJobs,
-        counts.park,
-        counts.power_plant > 0,
-        counts.water_tower > 0,
-      );
-
-      // Collect taxes and pay expenses
-      const income = calculateMonthlyIncome(state.population, happiness);
-      const expenses = calculateMonthlyExpenses(newGrid);
-      newMoney += income - expenses;
-
-      // Population growth
-      const oldPop = state.population;
-      newPopulation = simulatePopulationGrowth(state.population, maxPop, totalJobs, happiness);
-
-      // Check milestones
-      const milestones = [100, 500, 1000, 2000, 5000, 10000];
-      for (const m of milestones) {
-        if (oldPop < m && newPopulation >= m) {
-          populationMilestone = true;
-          setTimeout(() => get().addNotification(`Population reached ${m.toLocaleString()}!`), 0);
-        }
-      }
-
-      const demand = calculateDemand(newPopulation, counts);
-
-      set({
-        grid: newGrid,
-        date: newDate,
-        money: newMoney,
-        population: newPopulation,
-        jobs: totalJobs,
-        happiness,
-        demand,
-        totalResidential: counts.residential,
-        totalCommercial: counts.commercial,
-        totalIndustrial: counts.industrial,
-        monthlyIncome: income,
-        monthlyExpenses: expenses,
-      });
-
-      if (newMoney < 0 && !populationMilestone) {
-        get().addNotification('Warning: City is in debt!');
-      }
-
-      return;
-    }
-
-    set({
-      grid: newGrid,
-      date: newDate,
-      money: newMoney,
-      population: newPopulation,
-    });
+  placeTrain: (_stationId: string) => {
+    // Stub — will be implemented in Step 2
+    get().addNotification('列車配置は次のアップデートで実装予定です');
   },
 }));

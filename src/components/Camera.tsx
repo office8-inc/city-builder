@@ -7,9 +7,9 @@ export function Camera() {
   return (
     <OrbitControls
       makeDefault
-      minDistance={8}
-      maxDistance={90}
-      maxPolarAngle={Math.PI / 2.8}
+      minDistance={10}
+      maxDistance={120}
+      maxPolarAngle={Math.PI / 2.5}
       minPolarAngle={Math.PI / 10}
       target={[0, 0, 0]}
       enableDamping
@@ -23,7 +23,7 @@ export function Camera() {
           const t = ctrl.target;
           t.x = Math.max(-halfGrid, Math.min(halfGrid, t.x));
           t.z = Math.max(-halfGrid, Math.min(halfGrid, t.z));
-          t.y = 0;
+          t.y = Math.max(0, Math.min(5, t.y));
         }
       }}
     />
