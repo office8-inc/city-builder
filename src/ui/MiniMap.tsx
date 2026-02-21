@@ -4,6 +4,8 @@ import { GRID_SIZE, TERRAIN_COLORS } from '../game/constants.ts';
 
 export function MiniMap() {
   const map = useGameStore(s => s.map);
+  const tracks = useGameStore(s => s.tracks);
+  const stations = useGameStore(s => s.stations);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const size = 140;
@@ -32,20 +34,20 @@ export function MiniMap() {
         ctx.fillStyle = baseColor;
         ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
 
-        // Stations
-        if (tile.stationId) {
-          ctx.fillStyle = '#ff4444';
-          ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
-        }
-
         // Tracks
         if (tile.trackIds.length > 0) {
           ctx.fillStyle = '#888888';
           ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
         }
+
+        // Stations (drawn last so they show on top of tracks)
+        if (tile.stationId) {
+          ctx.fillStyle = '#ff4444';
+          ctx.fillRect(px, py, Math.ceil(scale), Math.ceil(scale));
+        }
       }
     }
-  }, [map, scale]);
+  }, [map, scale, tracks, stations]);
 
   return (
     <div className="rounded-xl overflow-hidden border border-white/10 shadow-lg bg-black/40 backdrop-blur-md p-1.5">

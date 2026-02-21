@@ -15,7 +15,21 @@ export function GridOverlay() {
     const tile = map[hoveredTile.x]?.[hoveredTile.z];
     if (!tile) return null;
 
-    const canPlace = tile.terrain === 'flat' || tile.terrain === 'hill';
+    let canPlace = false;
+    switch (selectedTool) {
+      case 'track_straight':
+      case 'track_curve':
+        canPlace = tile.terrain !== 'water' && tile.terrain !== 'mountain';
+        break;
+      case 'station_build':
+        canPlace = tile.trackIds.length > 0 && !tile.stationId;
+        break;
+      case 'train_place':
+        canPlace = tile.stationId !== null;
+        break;
+      default:
+        canPlace = tile.terrain === 'flat' || tile.terrain === 'hill';
+    }
 
     const worldX = hoveredTile.x - GRID_SIZE / 2 + 0.5;
     const worldZ = hoveredTile.z - GRID_SIZE / 2 + 0.5;

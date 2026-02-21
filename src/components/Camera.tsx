@@ -1,11 +1,22 @@
+import { useRef, useEffect } from 'react';
 import { OrbitControls } from '@react-three/drei';
 import { GRID_SIZE } from '../game/constants.ts';
 
 export function Camera() {
   const halfGrid = GRID_SIZE / 2;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controlsRef = useRef<any>(null);
+
+  // Remap mouse buttons: left=disabled (used for tools), middle=pan, right=rotate
+  useEffect(() => {
+    if (controlsRef.current) {
+      controlsRef.current.mouseButtons = { LEFT: -1, MIDDLE: 2, RIGHT: 0 };
+    }
+  }, []);
 
   return (
     <OrbitControls
+      ref={controlsRef}
       makeDefault
       minDistance={10}
       maxDistance={120}

@@ -5,6 +5,9 @@ import * as THREE from 'three';
 import { EffectComposer, Bloom, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing';
 import { ToneMappingMode } from 'postprocessing';
 import { Terrain } from './Terrain.tsx';
+import { Tracks } from './Tracks.tsx';
+import { Stations } from './Stations.tsx';
+import { Trains } from './Trains.tsx';
 import { GridOverlay } from './GridHelper.tsx';
 import { Camera } from './Camera.tsx';
 import { useGameStore } from '../game/store.ts';
@@ -18,8 +21,6 @@ function SimulationLoop() {
 
   useFrame((_, delta) => {
     if (speed === 0) return;
-    // At 1x: 4 ticks/sec (each tick = 10 min game time → 40 min/sec)
-    // At 8x: 32 ticks/sec → 320 min/sec ≈ ~5 hours/sec
     const ticksPerSecond = speed * 4;
     tickAccumulator.current += delta * ticksPerSecond;
     while (tickAccumulator.current >= 1) {
@@ -36,6 +37,9 @@ function InteractionPlane() {
   const selectedTool = useGameStore(s => s.selectedTool);
   const placeTrack = useGameStore(s => s.placeTrack);
   const buildStation = useGameStore(s => s.buildStation);
+  const placeTrain = useGameStore(s => s.placeTrain);
+
+  const dragStartRef = useRef<{ x: number; z: number } | null>(null);
 
   const handlePointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -47,20 +51,44 @@ function InteractionPlane() {
     }
   }, [setHoveredTile]);
 
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
+  const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    if (selectedTool === 'track_straight') {
+      const gridPos = worldToGrid(e.point.x, e.point.z);
+      if (isValidGridPosition(gridPos.x, gridPos.z)) {
+        dragStartRef.current = gridPos;
+      }
+    }
+  }, [selectedTool]);
+
+  const handlePointerUp = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     const gridPos = worldToGrid(e.point.x, e.point.z);
-    if (!isValidGridPosition(gridPos.x, gridPos.z)) return;
+    if (!isValidGridPosition(gridPos.x, gridPos.z)) {
+      dragStartRef.current = null;
+      return;
+    }
 
-    if (selectedTool === 'track_straight') {
-      placeTrack(gridPos.x, gridPos.z, gridPos.x + 1, gridPos.z);
+    if (selectedTool === 'track_straight' && dragStartRef.current) {
+      const start = dragStartRef.current;
+      dragStartRef.current = null;
+      if (start.x !== gridPos.x || start.z !== gridPos.z) {
+        placeTrack(start.x, start.z, gridPos.x, gridPos.z);
+      }
     } else if (selectedTool === 'station_build') {
       buildStation(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'train_place') {
+      const state = useGameStore.getState();
+      const tile = state.map[gridPos.x]?.[gridPos.z];
+      if (tile?.stationId) {
+        placeTrain(tile.stationId);
+      }
     }
-  }, [selectedTool, placeTrack, buildStation]);
+  }, [selectedTool, placeTrack, buildStation, placeTrain]);
 
   const handlePointerLeave = useCallback(() => {
     setHoveredTile(null);
+    dragStartRef.current = null;
   }, [setHoveredTile]);
 
   return (
@@ -68,7 +96,8 @@ function InteractionPlane() {
       rotation={[-Math.PI / 2, 0, 0]}
       position={[0, 0, 0]}
       onPointerMove={handlePointerMove}
-      onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerLeave}
     >
       <planeGeometry args={[GRID_SIZE, GRID_SIZE]} />
@@ -145,6 +174,9 @@ export function GameScene() {
       <Lights />
       <Camera />
       <Terrain />
+      <Tracks />
+      <Stations />
+      <Trains />
       <GridOverlay />
       <InteractionPlane />
       <SimulationLoop />
