@@ -3,10 +3,12 @@ import type { GameSpeed } from '../game/types.ts';
 
 const SPEEDS: Array<{ speed: GameSpeed; label: string; icon: string }> = [
   { speed: 0, label: '一時停止', icon: '⏸' },
+  { speed: 0.5, label: '0.5x', icon: '🐢' },
   { speed: 1, label: '1x', icon: '▶' },
   { speed: 2, label: '2x', icon: '⏩' },
   { speed: 4, label: '4x', icon: '⏭' },
   { speed: 8, label: '8x', icon: '⚡' },
+  { speed: 16, label: '16x', icon: '🚀' },
 ];
 
 export function TimeControls() {

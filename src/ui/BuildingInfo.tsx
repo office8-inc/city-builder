@@ -1,5 +1,5 @@
 import { useGameStore } from '../game/store.ts';
-import { TERRAIN_COLORS } from '../game/constants.ts';
+import { TERRAIN_COLORS, formatMoney } from '../game/constants.ts';
 
 const TERRAIN_LABELS: Record<string, string> = {
   flat: '平地',
@@ -9,6 +9,11 @@ const TERRAIN_LABELS: Record<string, string> = {
   forest: '森林',
 };
 
+const CATEGORY_LABELS: Record<string, string> = {
+  residential: '住宅', commercial: '商業', office: 'オフィス',
+  industrial: '工業', leisure: 'レジャー', culture: '文化', agriculture: '農業',
+};
+
 export function BuildingInfo() {
   const hoveredTile = useGameStore(s => s.hoveredTile);
   const map = useGameStore(s => s.map);
@@ -16,6 +21,8 @@ export function BuildingInfo() {
   const stations = useGameStore(s => s.stations);
   const trains = useGameStore(s => s.trains);
   const tracks = useGameStore(s => s.tracks);
+  const buildings = useGameStore(s => s.buildings);
+  const subsidiaries = useGameStore(s => s.subsidiaries);
 
   if (!hoveredTile) return null;
 
@@ -27,6 +34,12 @@ export function BuildingInfo() {
 
   // Check for station at this tile
   const station = tile.stationId ? stations.get(tile.stationId) : null;
+
+  // Check for building at this tile
+  const building = tile.buildingId ? buildings.get(tile.buildingId) : null;
+
+  // Check for subsidiary at this tile
+  const subsidiary = tile.subsidiaryId ? subsidiaries.get(tile.subsidiaryId) : null;
 
   // Check for train on a segment covering this tile
   let trainAtTile = null;
@@ -56,6 +69,31 @@ export function BuildingInfo() {
         <div className="text-white/60 mt-1">地価: {tile.landValue}</div>
       )}
 
+      {/* Building info */}
+      {building && (
+        <div className="border-t border-white/10 mt-1.5 pt-1.5">
+          <div className="font-medium text-cyan-300">
+            {CATEGORY_LABELS[building.type] || building.type} Lv.{building.level}
+          </div>
+          <div className="text-white/60">{building.subtype}</div>
+          {building.residents > 0 && (
+            <div className="text-white/60">住人: {building.residents}人</div>
+          )}
+          {building.workers > 0 && (
+            <div className="text-white/60">就業者: {building.workers}人</div>
+          )}
+        </div>
+      )}
+
+      {/* Subsidiary info */}
+      {subsidiary && (
+        <div className="border-t border-white/10 mt-1.5 pt-1.5">
+          <div className="font-medium text-purple-300">{subsidiary.name}</div>
+          <div className="text-white/60">収入: {formatMoney(subsidiary.monthlyRevenue)}/月</div>
+          <div className="text-white/60">経費: {formatMoney(subsidiary.monthlyExpense)}/月</div>
+        </div>
+      )}
+
       {/* Station info */}
       {station && (
         <div className="border-t border-white/10 mt-1.5 pt-1.5">
@@ -73,7 +111,7 @@ export function BuildingInfo() {
         </div>
       )}
 
-      {selectedTool !== 'none' && !station && !trainAtTile && (tile.terrain === 'flat' || tile.terrain === 'hill' || tile.terrain === 'forest') && (
+      {selectedTool !== 'none' && !station && !trainAtTile && !building && !subsidiary && (tile.terrain === 'flat' || tile.terrain === 'hill' || tile.terrain === 'forest') && (
         <div className="mt-1 text-white/80 text-[10px]">
           クリックで設置
         </div>

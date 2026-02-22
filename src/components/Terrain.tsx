@@ -7,6 +7,7 @@ import { getTileWorldHeight, getTerrainColor } from '../game/terrain.ts';
 
 function GroundMesh() {
   const map = useGameStore(s => s.map);
+  const season = useGameStore(s => s.season);
 
   const geometry = useMemo(() => {
     const halfGrid = GRID_SIZE / 2;
@@ -36,8 +37,8 @@ function GroundMesh() {
         positions.setY(i, -0.05);
       }
 
-      // Vertex color with per-tile noise variation
-      const [r, g, b] = getTerrainColor(tile.terrain, tile.height, gx, gz);
+      // Vertex color with per-tile noise variation and seasonal colors
+      const [r, g, b] = getTerrainColor(tile.terrain, tile.height, gx, gz, season);
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
@@ -47,7 +48,7 @@ function GroundMesh() {
     geo.computeVertexNormals();
 
     return geo;
-  }, [map]);
+  }, [map, season]);
 
   return (
     <mesh geometry={geometry} receiveShadow>
@@ -137,6 +138,7 @@ function WaterPlane() {
 // Simple tree instancing for forest tiles
 function ForestInstances() {
   const map = useGameStore(s => s.map);
+  const season = useGameStore(s => s.season);
 
   const { trunkData, canopyData } = useMemo(() => {
     const trunks: { position: THREE.Vector3; scale: THREE.Vector3 }[] = [];
@@ -198,11 +200,12 @@ function ForestInstances() {
     return mesh;
   }, [trunkData]);
 
+  const canopyColor = season === 'autumn' ? '#c85a20' : season === 'winter' ? '#8a8a7a' : season === 'spring' ? '#5aaa4a' : '#2d8a2d';
   const canopyMesh = useMemo(() => {
     if (canopyData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(1, 6, 4),
-      new THREE.MeshStandardMaterial({ color: '#2d8a2d', roughness: 0.75 }),
+      new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.75 }),
       canopyData.length,
     );
     const matrix = new THREE.Matrix4();
@@ -213,7 +216,7 @@ function ForestInstances() {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = true;
     return mesh;
-  }, [canopyData]);
+  }, [canopyData, canopyColor]);
 
   return (
     <group>

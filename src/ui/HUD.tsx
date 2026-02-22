@@ -8,6 +8,16 @@ import { MiniMap } from './MiniMap.tsx';
 import { Notifications } from './Notifications.tsx';
 import { BuildingInfo } from './BuildingInfo.tsx';
 import { FinancePanel } from './FinancePanel.tsx';
+import { SchedulePanel } from './SchedulePanel.tsx';
+import { SettingsPanel } from './SettingsPanel.tsx';
+import { ScenarioPanel } from './ScenarioPanel.tsx';
+
+const SEASON_LABELS: Record<string, string> = {
+  spring: '春', summer: '夏', autumn: '秋', winter: '冬',
+};
+const WEATHER_LABELS: Record<string, string> = {
+  clear: '晴', cloudy: '曇', rain: '雨',
+};
 
 function CabViewButton() {
   const cameraMode = useGameStore(s => s.cameraMode);
@@ -16,21 +26,35 @@ function CabViewButton() {
   const followTrainId = useGameStore(s => s.followTrainId);
 
   const isFollow = cameraMode === 'follow';
+  const isQuarter = cameraMode === 'quarter';
   const trainName = followTrainId ? trains.get(followTrainId)?.name : null;
 
   return (
-    <button
-      onClick={() => setCameraMode(isFollow ? 'free' : 'follow')}
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-        isFollow
-          ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/30'
-          : 'bg-white/10 text-white/80 hover:bg-white/20'
-      }`}
-      title={isFollow ? 'フリーカメラに戻る (Esc)' : '車窓モード (列車を追尾)'}
-    >
-      <span>🚃</span>
-      <span>{isFollow ? `車窓: ${trainName || '---'}` : '車窓モード'}</span>
-    </button>
+    <div className="flex gap-1">
+      <button
+        onClick={() => setCameraMode(isFollow ? 'free' : 'follow')}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+          isFollow
+            ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/30'
+            : 'bg-white/10 text-white/80 hover:bg-white/20'
+        }`}
+        title={isFollow ? 'フリーカメラに戻る (Esc)' : '車窓モード (列車を追尾)'}
+      >
+        <span>🚃</span>
+        <span>{isFollow ? `車窓: ${trainName || '---'}` : '車窓'}</span>
+      </button>
+      <button
+        onClick={() => setCameraMode(isQuarter ? 'free' : 'quarter')}
+        className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-sm font-medium transition-all ${
+          isQuarter
+            ? 'bg-indigo-500/80 text-white shadow-lg shadow-indigo-500/30'
+            : 'bg-white/10 text-white/80 hover:bg-white/20'
+        }`}
+        title="クォータービュー (V)"
+      >
+        <span>🗺️</span>
+      </button>
+    </div>
   );
 }
 
@@ -38,6 +62,8 @@ function TopBar() {
   const finance = useGameStore(s => s.finance);
   const population = useGameStore(s => s.population);
   const gameTime = useGameStore(s => s.gameTime);
+  const season = useGameStore(s => s.season);
+  const weatherType = useGameStore(s => s.weatherType);
   const toggleFinancePanel = useGameStore(s => s.toggleFinancePanel);
   const saveGame = useGameStore(s => s.saveGame);
   const loadGame = useGameStore(s => s.loadGame);
@@ -55,6 +81,9 @@ function TopBar() {
         <span className="flex items-center gap-1.5 font-mono">
           🕐 {formatClock(gameTime)}
         </span>
+        <span className="text-white/60 text-xs">
+          {SEASON_LABELS[season]} {WEATHER_LABELS[weatherType]}
+        </span>
         <button
           onClick={toggleFinancePanel}
           className="flex items-center gap-1 hover:bg-white/10 px-1.5 py-0.5 rounded transition-all"
@@ -70,12 +99,12 @@ function TopBar() {
         <CabViewButton />
         <div className="flex gap-1 ml-1">
           <button
-            onClick={saveGame}
+            onClick={() => saveGame()}
             className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
             title="セーブ"
           >💾</button>
           <button
-            onClick={loadGame}
+            onClick={() => loadGame()}
             className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
             title="ロード"
           >📂</button>
@@ -104,6 +133,11 @@ export function HUD() {
         <StatsPanel />
       </div>
 
+      {/* Scenario objectives */}
+      <div className="pointer-events-auto absolute top-48 right-2">
+        <ScenarioPanel />
+      </div>
+
       {/* Bottom right - minimap */}
       <div className="pointer-events-auto absolute bottom-2 right-2">
         <MiniMap />
@@ -112,6 +146,16 @@ export function HUD() {
       {/* Finance panel */}
       <div className="pointer-events-auto absolute top-16 left-16">
         <FinancePanel />
+      </div>
+
+      {/* Schedule panel */}
+      <div className="pointer-events-auto absolute top-16 left-[22rem]">
+        <SchedulePanel />
+      </div>
+
+      {/* Settings panel */}
+      <div className="pointer-events-auto absolute top-16 left-[40rem]">
+        <SettingsPanel />
       </div>
 
       {/* Center top - notifications */}

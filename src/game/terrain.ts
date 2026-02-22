@@ -150,8 +150,8 @@ function tileHash(x: number, z: number): number {
   return (h >>> 0) / 4294967296; // 0..1
 }
 
-// Get terrain color for rendering — now with per-tile noise variation
-export function getTerrainColor(terrain: TerrainType, height: number, tileX?: number, tileZ?: number): [number, number, number] {
+// Get terrain color for rendering — now with per-tile noise variation and seasonal colors
+export function getTerrainColor(terrain: TerrainType, height: number, tileX?: number, tileZ?: number, season?: string): [number, number, number] {
   const noise = (tileX !== undefined && tileZ !== undefined) ? tileHash(tileX, tileZ) : 0.5;
   // Secondary noise at different frequency for dirt patches
   const noise2 = (tileX !== undefined && tileZ !== undefined) ? tileHash(tileX + 317, tileZ + 523) : 0.5;
@@ -179,16 +179,30 @@ export function getTerrainColor(terrain: TerrainType, height: number, tileX?: nu
       ];
     }
     case 'forest': {
-      // Vary forest between dark green and slightly brownish green
       const v = noise * 0.12;
-      return [0.12 + v, 0.42 + noise * 0.08, 0.10 + v * 0.5]; // richer dark green
+      if (season === 'autumn') {
+        // Red/orange/brown autumn leaves
+        const r = 0.55 + v + noise * 0.15;
+        const g = 0.25 + noise * 0.1;
+        const b = 0.08 + v * 0.3;
+        return [r, g, b];
+      }
+      if (season === 'winter') {
+        // Bare/snowy forest
+        return [0.5 + v * 0.5, 0.52 + noise * 0.04, 0.48 + v * 0.3];
+      }
+      if (season === 'spring') {
+        // Light green with pink cherry blossom hints
+        const pink = noise > 0.7 ? 0.15 : 0;
+        return [0.2 + v + pink, 0.5 + noise * 0.08, 0.18 + v * 0.5 + pink * 0.3];
+      }
+      // Summer (default) - rich dark green
+      return [0.12 + v, 0.42 + noise * 0.08, 0.10 + v * 0.5];
     }
     case 'flat':
     default: {
       const t = Math.max(0, Math.min(1, (height - 2) / 4));
-      // Valleys near water (low height) are darker/richer
       const valleyBoost = height <= 2 ? 0.06 : 0;
-      // Occasional subtle dirt patches (less frequent, more natural)
       const isDirt = noise2 > 0.92;
       if (isDirt) {
         return [
@@ -197,10 +211,19 @@ export function getTerrainColor(terrain: TerrainType, height: number, tileX?: nu
           0.22 + (noise - 0.5) * 0.03,
         ];
       }
+      // Seasonal flat ground colors
+      let rBase = 0.24, gBase = 0.62, bBase = 0.16;
+      if (season === 'autumn') {
+        rBase = 0.35; gBase = 0.48; bBase = 0.15;
+      } else if (season === 'winter') {
+        rBase = 0.55; gBase = 0.58; bBase = 0.52;
+      } else if (season === 'spring') {
+        rBase = 0.28; gBase = 0.65; bBase = 0.22;
+      }
       return [
-        0.24 + t * 0.06 + (noise - 0.5) * 0.08 - valleyBoost * 0.5,
-        0.62 - t * 0.04 + (noise - 0.5) * 0.06 + valleyBoost,
-        0.16 + t * 0.02 + (noise - 0.5) * 0.04,
+        rBase + t * 0.06 + (noise - 0.5) * 0.08 - valleyBoost * 0.5,
+        gBase - t * 0.04 + (noise - 0.5) * 0.06 + valleyBoost,
+        bBase + t * 0.02 + (noise - 0.5) * 0.04,
       ];
     }
   }

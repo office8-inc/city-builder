@@ -20,6 +20,7 @@ export function StatsPanel() {
   const stations = useGameStore(s => s.stations);
   const trains = useGameStore(s => s.trains);
   const buildings = useGameStore(s => s.buildings);
+  const subsidiaries = useGameStore(s => s.subsidiaries);
 
   const buildingCounts = useMemo(() => {
     const counts: Partial<Record<BuildingCategory, number>> = {};
@@ -31,7 +32,7 @@ export function StatsPanel() {
 
   const income = finance.quarterlyIncome;
   const expenses = finance.quarterlyExpenses;
-  const totalIncome = income.railFare + income.subsidiary + income.other;
+  const totalIncome = income.railFare + income.subsidiary + income.other + income.landRent;
   const totalExpenses = expenses.trackMaintenance + expenses.trainMaintenance +
     expenses.staffCost + expenses.subsidiaryRunning + expenses.interestPayment;
 
@@ -56,9 +57,14 @@ export function StatsPanel() {
           <span className="text-white/60">列車</span>
           <span className="font-medium">{trains.size}編成</span>
         </div>
+        {subsidiaries.size > 0 && (
+          <div className="flex justify-between">
+            <span className="text-white/60">子会社</span>
+            <span className="font-medium">{subsidiaries.size}施設</span>
+          </div>
+        )}
       </div>
 
-      {/* Building counts by category */}
       {buildings.size > 0 && (
         <div className="border-t border-white/10 pt-2 mt-2 space-y-1 text-xs">
           <div className="text-white/50 font-bold text-[10px] uppercase tracking-wider">建物 ({buildings.size})</div>
@@ -82,9 +88,19 @@ export function StatsPanel() {
           <span className="text-emerald-400 font-medium">{formatMoney(income.railFare)}</span>
         </div>
         <div className="flex justify-between">
+          <span className="text-white/60">子会社</span>
+          <span className="text-emerald-400 font-medium">{formatMoney(income.subsidiary)}</span>
+        </div>
+        <div className="flex justify-between">
           <span className="text-white/60">税収</span>
           <span className="text-emerald-400 font-medium">{formatMoney(income.other)}</span>
         </div>
+        {income.landRent > 0 && (
+          <div className="flex justify-between">
+            <span className="text-white/60">地代</span>
+            <span className="text-emerald-400 font-medium">{formatMoney(income.landRent)}</span>
+          </div>
+        )}
         <div className="flex justify-between">
           <span className="text-white/60">支出</span>
           <span className="text-red-400 font-medium">{formatMoney(totalExpenses)}</span>

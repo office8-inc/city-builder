@@ -1,5 +1,5 @@
 import type { GameState, Building, BuildingCategory } from './types.ts';
-import { BUILDING_SUBTYPES, GRID_SIZE } from './constants.ts';
+import { BUILDING_SUBTYPES, GRID_SIZE, SYNERGY_MATRIX } from './constants.ts';
 
 // Seeded PRNG for consistent building appearance per tile
 function seededRandom(seed: number): number {
@@ -11,6 +11,8 @@ function seededRandom(seed: number): number {
 }
 
 let nextBuildingId = 1;
+export function getNextBuildingId(): number { return nextBuildingId; }
+export function setNextBuildingId(n: number) { nextBuildingId = n; }
 
 // Category weights by distance zone
 const NEAR_WEIGHTS: [BuildingCategory, number][] = [
@@ -35,13 +37,11 @@ function pickWeighted(weights: [BuildingCategory, number][], rand: number): Buil
 
 function pickSubtype(category: BuildingCategory, rand: number) {
   const subtypes = BUILDING_SUBTYPES[category];
-  // For new buildings, pick level-1 compatible subtypes
   const eligible = subtypes.filter(s => s.maxLevel >= 1);
   const idx = Math.floor(rand * eligible.length) % eligible.length;
   return eligible[idx];
 }
 
-// Residents per building based on subtype and level
 export function getBuildingResidents(subtype: string, level: number): number {
   switch (subtype) {
     case 'house_small': return 4 * level;
@@ -78,20 +78,34 @@ export function getBuildingWorkers(subtype: string, level: number): number {
   }
 }
 
-/**
- * Run city development: spawn new buildings around active stations.
- * Called once per in-game day.
- */
+function calculateSynergyScore(
+  x: number, z: number, category: BuildingCategory,
+  buildings: Map<string, Building>,
+  radius: number = 5
+): number {
+  let score = 0;
+  const synergyRow = SYNERGY_MATRIX[category];
+  if (!synergyRow) return 0;
+
+  for (const building of buildings.values()) {
+    const dist = Math.sqrt((building.x - x) ** 2 + (building.z - z) ** 2);
+    if (dist > radius || dist === 0) continue;
+    const synergy = synergyRow[building.type];
+    if (synergy) {
+      score += synergy * (1 - dist / radius);
+    }
+  }
+  return score;
+}
+
 export function developCity(state: GameState): Building[] {
   const { stations, buildings, map } = state;
   const newBuildings: Building[] = [];
 
-  // Cap total buildings
   const MAX_BUILDINGS = 500;
   if (buildings.size >= MAX_BUILDINGS) return newBuildings;
 
   const remaining = MAX_BUILDINGS - buildings.size;
-  // Limit per-tick spawns to prevent lag spikes
   const MAX_SPAWN_PER_TICK = 10;
   let spawned = 0;
 
@@ -109,14 +123,12 @@ export function developCity(state: GameState): Building[] {
       for (let z = minZ; z <= maxZ && spawned < MAX_SPAWN_PER_TICK && spawned < remaining; z++) {
         const tile = map[x][z];
 
-        // Only build on flat, empty tiles
         if (tile.terrain !== 'flat') continue;
         if (tile.buildingId || tile.stationId || tile.trackIds.length > 0) continue;
 
         const dist = Math.sqrt((x - station.x) ** 2 + (z - station.z) ** 2);
         if (dist > radius) continue;
 
-        // Probability: closer = higher, activity-dependent
         const baseProbability = Math.min(station.activityLevel / 200, 0.5);
         const distanceFalloff = 1 - dist / radius;
         const probability = baseProbability * distanceFalloff;
@@ -124,7 +136,6 @@ export function developCity(state: GameState): Building[] {
         const rand = seededRandom(x * 10007 + z * 7919 + state.gameTime.day * 31 + state.gameTime.month * 367);
         if (rand > probability) continue;
 
-        // Pick category based on distance zone
         const catRand = seededRandom(x * 1000 + z + state.gameTime.year * 13);
         let weights: [BuildingCategory, number][];
         if (dist <= 3) {
@@ -136,11 +147,14 @@ export function developCity(state: GameState): Building[] {
         }
         const category = pickWeighted(weights, catRand);
 
-        // Pick subtype
+        // Apply synergy
+        const synergyScore = calculateSynergyScore(x, z, category, buildings);
+        const synergyMultiplier = 1 + synergyScore * 0.3;
+        if (synergyMultiplier < 0.5) continue;
+
         const subtypeRand = seededRandom(x * 3001 + z * 4007);
         const spec = pickSubtype(category, subtypeRand);
 
-        // Check if multi-tile building fits
         if (spec.width > 1 || spec.depth > 1) {
           let fits = true;
           for (let dx = 0; dx < spec.width && fits; dx++) {
@@ -160,22 +174,16 @@ export function developCity(state: GameState): Building[] {
 
         const id = `bld_${nextBuildingId++}`;
         const building: Building = {
-          id,
-          x,
-          z,
-          type: category,
-          subtype: spec.subtype,
-          level: 1,
-          width: spec.width,
-          depth: spec.depth,
-          height: spec.height,
+          id, x, z,
+          type: category, subtype: spec.subtype,
+          level: 1, width: spec.width, depth: spec.depth, height: spec.height,
           residents: getBuildingResidents(spec.subtype, 1),
           workers: getBuildingWorkers(spec.subtype, 1),
+          materialRequirement: 0,
         };
 
         newBuildings.push(building);
 
-        // Mark tiles occupied
         for (let dx = 0; dx < spec.width; dx++) {
           for (let dz = 0; dz < spec.depth; dz++) {
             map[x + dx][z + dz].buildingId = id;
@@ -190,15 +198,10 @@ export function developCity(state: GameState): Building[] {
   return newBuildings;
 }
 
-/**
- * Level up buildings near active stations.
- * Called once per in-game month.
- */
 export function levelUpBuildings(state: GameState): void {
   const { stations, buildings } = state;
 
   for (const building of buildings.values()) {
-    // Find nearest station
     let nearestActivity = 0;
     for (const station of stations.values()) {
       const dist = Math.sqrt((building.x - station.x) ** 2 + (building.z - station.z) ** 2);
@@ -210,13 +213,11 @@ export function levelUpBuildings(state: GameState): void {
 
     if (nearestActivity <= 0) continue;
 
-    // Find max level for this subtype
     const category = building.type;
     const subtypes = BUILDING_SUBTYPES[category];
     const spec = subtypes.find(s => s.subtype === building.subtype);
     if (!spec || building.level >= spec.maxLevel) continue;
 
-    // 20% chance per month
     const rand = seededRandom(building.x * 7001 + building.z * 3011 + state.gameTime.month * 97 + state.gameTime.year * 13);
     if (rand > 0.2) continue;
 
@@ -227,13 +228,18 @@ export function levelUpBuildings(state: GameState): void {
   }
 }
 
-/**
- * Calculate total population from all residential buildings.
- */
 export function calculatePopulation(buildings: Map<string, Building>): number {
   let pop = 0;
   for (const b of buildings.values()) {
     pop += b.residents;
   }
   return pop;
+}
+
+export function calculateWorkforce(buildings: Map<string, Building>): number {
+  let work = 0;
+  for (const b of buildings.values()) {
+    work += b.workers;
+  }
+  return work;
 }

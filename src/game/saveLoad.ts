@@ -5,14 +5,21 @@ import type {
   Train,
   Building,
   Subsidiary,
+  Signal,
+  Loan,
   MapTile,
   Finance,
   GameTime,
   GameSpeed,
   QuarterlyRecord,
+  Season,
+  WeatherType,
+  TrainVehicleType,
 } from './types.ts';
+import { getNextEntityId, setNextEntityId } from './actions.ts';
+import { getNextBuildingId, setNextBuildingId } from './cityDevelopment.ts';
 
-interface SerializedState {
+interface SerializedStateV1 {
   version: 1;
   map: MapTile[][];
   tracks: [string, TrackSegment][];
@@ -30,68 +37,223 @@ interface SerializedState {
   lastAutoSaveDay: number;
 }
 
-const SAVE_KEY = 'atrain-city-save';
+interface SerializedStateV2 {
+  version: 2;
+  map: MapTile[][];
+  tracks: [string, TrackSegment][];
+  stations: [string, Station][];
+  trains: [string, Train][];
+  buildings: [string, Building][];
+  subsidiaries: [string, Subsidiary][];
+  signals: [string, Signal][];
+  finance: Finance;
+  population: number;
+  workforce: number;
+  quarterlyHistory: QuarterlyRecord[];
+  loans: Loan[];
+  ownedLand: string[];
+  gameTime: GameTime;
+  speed: GameSpeed;
+  season: Season;
+  weatherType: WeatherType;
+  selectedTrainType: TrainVehicleType;
+  constructionMode: boolean;
+  scenarioId: string | null;
+  lastDevelopmentDay: number;
+  lastLevelUpMonth: number;
+  lastAutoSaveDay: number;
+  nextEntityId: number;
+  nextBuildingId: number;
+}
+
+type SerializedState = SerializedStateV1 | SerializedStateV2;
+
+function getSaveKey(slot?: number): string {
+  if (slot !== undefined && slot > 0) return `atrain-city-save-${slot}`;
+  return 'atrain-city-save';
+}
 
 export function serializeState(state: GameState): string {
-  const data: SerializedState = {
-    version: 1,
+  const data: SerializedStateV2 = {
+    version: 2,
     map: state.map,
     tracks: Array.from(state.tracks.entries()),
     stations: Array.from(state.stations.entries()),
     trains: Array.from(state.trains.entries()),
     buildings: Array.from(state.buildings.entries()),
     subsidiaries: Array.from(state.subsidiaries.entries()),
+    signals: Array.from(state.signals.entries()),
     finance: state.finance,
     population: state.population,
+    workforce: state.workforce,
     quarterlyHistory: state.quarterlyHistory,
+    loans: state.loans,
+    ownedLand: Array.from(state.ownedLand),
     gameTime: state.gameTime,
     speed: state.speed,
+    season: state.season,
+    weatherType: state.weatherType,
+    selectedTrainType: state.selectedTrainType,
+    constructionMode: state.constructionMode,
+    scenarioId: state.scenarioId,
     lastDevelopmentDay: state.lastDevelopmentDay,
     lastLevelUpMonth: state.lastLevelUpMonth,
     lastAutoSaveDay: state.lastAutoSaveDay,
+    nextEntityId: getNextEntityId(),
+    nextBuildingId: getNextBuildingId(),
   };
   return JSON.stringify(data);
 }
 
-export function saveToLocalStorage(state: GameState): void {
+function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
+  let maxEntityId = 0;
+  let maxBuildingId = 0;
+  for (const [, t] of data.tracks) {
+    const n = parseInt(t.id.split('_')[1]);
+    if (n > maxEntityId) maxEntityId = n;
+  }
+  for (const [, s] of data.stations) {
+    const n = parseInt(s.id.split('_')[1]);
+    if (n > maxEntityId) maxEntityId = n;
+  }
+  for (const [, t] of data.trains) {
+    const n = parseInt(t.id.split('_')[1]);
+    if (n > maxEntityId) maxEntityId = n;
+  }
+  for (const [, b] of data.buildings) {
+    const n = parseInt(b.id.split('_')[1]);
+    if (n > maxBuildingId) maxBuildingId = n;
+  }
+  for (const [, s] of data.subsidiaries) {
+    const n = parseInt(s.id.split('_')[1]);
+    if (n > maxEntityId) maxEntityId = n;
+  }
+
+  setNextEntityId(maxEntityId + 1);
+  setNextBuildingId(maxBuildingId + 1);
+
+  const finance: Finance = {
+    ...data.finance,
+    stockPrice: (data.finance as any).stockPrice ?? 1000,
+    totalAssets: (data.finance as any).totalAssets ?? data.finance.cash,
+    quarterlyIncome: {
+      ...data.finance.quarterlyIncome,
+      landRent: (data.finance.quarterlyIncome as any).landRent ?? 0,
+    },
+  };
+
+  const buildings = new Map<string, Building>();
+  for (const [id, b] of data.buildings) {
+    buildings.set(id, { ...b, materialRequirement: (b as any).materialRequirement ?? 0 });
+  }
+
+  const trains = new Map<string, Train>();
+  for (const [id, t] of data.trains) {
+    trains.set(id, {
+      ...t,
+      waitTimer: (t as any).waitTimer ?? 0,
+      materialLoad: (t as any).materialLoad ?? 0,
+      schedule: (t as any).schedule ?? { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
+    });
+  }
+
+  const stations = new Map<string, Station>();
+  for (const [id, s] of data.stations) {
+    stations.set(id, { ...s, type: (s as any).type ?? 'ground_small' });
+  }
+
+  const subsidiaries = new Map<string, Subsidiary>();
+  for (const [id, s] of data.subsidiaries) {
+    subsidiaries.set(id, { ...s, level: (s as any).level ?? 1 });
+  }
+
+  const tracks = new Map<string, TrackSegment>();
+  for (const [id, t] of data.tracks) {
+    tracks.set(id, {
+      ...t,
+      direction: (t as any).direction ?? (t.startZ === t.endZ ? 'E' : 'S'),
+      elevation: (t as any).elevation ?? 0,
+    });
+  }
+
+  return {
+    map: data.map,
+    tracks,
+    stations,
+    trains,
+    buildings,
+    subsidiaries,
+    finance,
+    population: data.population,
+    quarterlyHistory: data.quarterlyHistory || [],
+    gameTime: data.gameTime,
+    speed: data.speed,
+    lastDevelopmentDay: data.lastDevelopmentDay,
+    lastLevelUpMonth: data.lastLevelUpMonth,
+    lastAutoSaveDay: data.lastAutoSaveDay || 0,
+  };
+}
+
+function loadV2(data: SerializedStateV2): Partial<GameState> {
+  setNextEntityId(data.nextEntityId);
+  setNextBuildingId(data.nextBuildingId);
+
+  return {
+    map: data.map,
+    tracks: new Map(data.tracks),
+    stations: new Map(data.stations),
+    trains: new Map(data.trains),
+    buildings: new Map(data.buildings),
+    subsidiaries: new Map(data.subsidiaries),
+    signals: new Map(data.signals),
+    finance: data.finance,
+    population: data.population,
+    workforce: data.workforce,
+    quarterlyHistory: data.quarterlyHistory || [],
+    loans: data.loans || [],
+    ownedLand: new Set(data.ownedLand || []),
+    gameTime: data.gameTime,
+    speed: data.speed,
+    season: data.season,
+    weatherType: data.weatherType,
+    constructionMode: data.constructionMode,
+    scenarioId: data.scenarioId,
+    lastDevelopmentDay: data.lastDevelopmentDay,
+    lastLevelUpMonth: data.lastLevelUpMonth,
+    lastAutoSaveDay: data.lastAutoSaveDay || 0,
+  };
+}
+
+export function saveToLocalStorage(state: GameState, slot?: number): void {
   try {
     const json = serializeState(state);
-    localStorage.setItem(SAVE_KEY, json);
+    localStorage.setItem(getSaveKey(slot), json);
   } catch {
     console.warn('Failed to save game');
   }
 }
 
-export function loadFromLocalStorage(): Partial<GameState> | null {
+export function loadFromLocalStorage(slot?: number): Partial<GameState> | null {
   try {
-    const json = localStorage.getItem(SAVE_KEY);
+    const json = localStorage.getItem(getSaveKey(slot));
     if (!json) return null;
 
     const data: SerializedState = JSON.parse(json);
-    if (data.version !== 1) return null;
 
-    return {
-      map: data.map,
-      tracks: new Map(data.tracks),
-      stations: new Map(data.stations),
-      trains: new Map(data.trains),
-      buildings: new Map(data.buildings),
-      subsidiaries: new Map(data.subsidiaries),
-      finance: data.finance,
-      population: data.population,
-      quarterlyHistory: data.quarterlyHistory || [],
-      gameTime: data.gameTime,
-      speed: data.speed,
-      lastDevelopmentDay: data.lastDevelopmentDay,
-      lastLevelUpMonth: data.lastLevelUpMonth,
-      lastAutoSaveDay: data.lastAutoSaveDay || 0,
-    };
+    if (data.version === 1) {
+      return migrateV1toV2(data);
+    }
+    if (data.version === 2) {
+      return loadV2(data);
+    }
+
+    return null;
   } catch {
     console.warn('Failed to load game');
     return null;
   }
 }
 
-export function hasSavedGame(): boolean {
-  return localStorage.getItem(SAVE_KEY) !== null;
+export function hasSavedGame(slot?: number): boolean {
+  return localStorage.getItem(getSaveKey(slot)) !== null;
 }

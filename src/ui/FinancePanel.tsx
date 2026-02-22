@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useGameStore } from '../game/store.ts';
-import { formatMoney } from '../game/constants.ts';
+import { formatMoney, LOAN_OPTIONS } from '../game/constants.ts';
 
 function BarChart() {
   const history = useGameStore(s => s.quarterlyHistory);
@@ -35,6 +35,47 @@ function BarChart() {
   );
 }
 
+function LoanSection() {
+  const loans = useGameStore(s => s.loans);
+  const takeLoan = useGameStore(s => s.takeLoan);
+  const repayLoan = useGameStore(s => s.repayLoan);
+
+  return (
+    <div className="border-t border-white/10 pt-2 mt-2 space-y-1.5 text-xs">
+      <div className="text-white/50 font-bold text-[10px] uppercase tracking-wider">融資</div>
+
+      {/* Active loans */}
+      {loans.map(loan => (
+        <div key={loan.id} className="flex justify-between items-center">
+          <div>
+            <div className="text-white/70">{formatMoney(loan.principal)}</div>
+            <div className="text-white/40 text-[10px]">残{loan.remainingMonths}ヶ月</div>
+          </div>
+          <button
+            onClick={() => repayLoan(loan.id)}
+            className="px-1.5 py-0.5 rounded text-[10px] bg-red-500/30 hover:bg-red-500/50 text-red-300 transition-all"
+          >
+            返済
+          </button>
+        </div>
+      ))}
+
+      {/* New loan options */}
+      <div className="flex flex-wrap gap-1 mt-1">
+        {LOAN_OPTIONS.map(opt => (
+          <button
+            key={opt.amount}
+            onClick={() => takeLoan(opt.amount, opt.months)}
+            className="px-2 py-1 rounded text-[10px] bg-blue-500/20 hover:bg-blue-500/40 text-blue-300 transition-all"
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function FinancePanel() {
   const finance = useGameStore(s => s.finance);
   const showFinancePanel = useGameStore(s => s.showFinancePanel);
@@ -44,13 +85,13 @@ export function FinancePanel() {
 
   const income = finance.quarterlyIncome;
   const expenses = finance.quarterlyExpenses;
-  const totalIncome = income.railFare + income.subsidiary + income.other;
+  const totalIncome = income.railFare + income.subsidiary + income.other + income.landRent;
   const totalExpenses = expenses.trackMaintenance + expenses.trainMaintenance +
     expenses.staffCost + expenses.subsidiaryRunning + expenses.interestPayment;
   const net = totalIncome - totalExpenses;
 
   return (
-    <div className="w-64 p-3 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 text-white shadow-lg">
+    <div className="w-64 p-3 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 text-white shadow-lg max-h-[80vh] overflow-y-auto">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-bold text-white/70 uppercase tracking-wider">財務ダッシュボード</span>
         <button
@@ -75,6 +116,10 @@ export function FinancePanel() {
             <span className="text-red-400 font-medium">{formatMoney(finance.debt)}</span>
           </div>
         )}
+        <div className="flex justify-between">
+          <span className="text-white/60">株価</span>
+          <span className="text-white/80 font-medium">{finance.stockPrice.toLocaleString()}円</span>
+        </div>
       </div>
 
       {/* Income breakdown */}
@@ -92,6 +137,12 @@ export function FinancePanel() {
           <span className="text-white/60">税収</span>
           <span className="text-emerald-400">{formatMoney(income.other)}</span>
         </div>
+        {income.landRent > 0 && (
+          <div className="flex justify-between">
+            <span className="text-white/60">地代収入</span>
+            <span className="text-emerald-400">{formatMoney(income.landRent)}</span>
+          </div>
+        )}
         <div className="flex justify-between border-t border-white/5 pt-0.5">
           <span className="text-white/70 font-medium">合計</span>
           <span className="text-emerald-400 font-bold">{formatMoney(totalIncome)}</span>
@@ -148,6 +199,9 @@ export function FinancePanel() {
           <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500/70 rounded-sm" /> 支出</span>
         </div>
       </div>
+
+      {/* Loan section */}
+      <LoanSection />
     </div>
   );
 }

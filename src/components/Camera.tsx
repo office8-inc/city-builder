@@ -63,6 +63,7 @@ function FreeCamera() {
 function FollowCamera() {
   const { camera } = useThree();
   const followTrainId = useGameStore(s => s.followTrainId);
+  const followMode = useGameStore(s => s.followMode);
 
   useFrame(() => {
     if (!followTrainId) return;
@@ -95,25 +96,126 @@ function FollowCamera() {
     const ndx = dirX / len;
     const ndz = dirZ / len;
 
-    // Camera behind and above train
-    const camDist = 3;
-    const camHeight = 1.5;
-    const targetX = trainX + ndx * 2;
-    const targetY = trainY + 0.3;
-    const targetZ = trainZ + ndz * 2;
-    const camX = trainX - ndx * camDist;
-    const camY = trainY + camHeight;
-    const camZ = trainZ - ndz * camDist;
+    if (followMode === 'cab') {
+      // Cab view: driver's perspective
+      const camX = trainX + ndx * 0.3;
+      const camY = trainY + 0.12;
+      const camZ = trainZ + ndz * 0.3;
+      const lookX = trainX + ndx * 5;
+      const lookY = trainY + 0.1;
+      const lookZ = trainZ + ndz * 5;
 
-    // Smooth follow
-    camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.08);
-    const lookTarget = new THREE.Vector3(targetX, targetY, targetZ);
-    const currentLook = new THREE.Vector3();
-    camera.getWorldDirection(currentLook);
-    currentLook.multiplyScalar(5).add(camera.position);
-    currentLook.lerp(lookTarget, 0.08);
-    camera.lookAt(currentLook);
+      camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.12);
+      const lookTarget = new THREE.Vector3(lookX, lookY, lookZ);
+      camera.lookAt(lookTarget);
+    } else {
+      // Chase view: behind and above
+      const camDist = 3;
+      const camHeight = 1.5;
+      const targetX = trainX + ndx * 2;
+      const targetY = trainY + 0.3;
+      const targetZ = trainZ + ndz * 2;
+      const camX = trainX - ndx * camDist;
+      const camY = trainY + camHeight;
+      const camZ = trainZ - ndz * camDist;
+
+      camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.08);
+      const lookTarget = new THREE.Vector3(targetX, targetY, targetZ);
+      const currentLook = new THREE.Vector3();
+      camera.getWorldDirection(currentLook);
+      currentLook.multiplyScalar(5).add(camera.position);
+      currentLook.lerp(lookTarget, 0.08);
+      camera.lookAt(currentLook);
+    }
   });
+
+  return null;
+}
+
+function QuarterViewCamera() {
+  const { camera } = useThree();
+  const targetRef = useRef(new THREE.Vector3(0, 0, 0));
+  const rotationRef = useRef(0); // 0, 90, 180, 270
+  const zoomRef = useRef(40);
+
+  // Listen for Q/E rotation keys
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'q' || e.key === 'Q') {
+        rotationRef.current = (rotationRef.current - 45 + 360) % 360;
+      } else if (e.key === 'e' || e.key === 'E') {
+        rotationRef.current = (rotationRef.current + 45) % 360;
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Apply camera position each frame
+  useFrame(() => {
+    const pitch = Math.PI / 6; // 30 degrees
+    const rot = (rotationRef.current * Math.PI) / 180;
+    const dist = zoomRef.current;
+
+    const camX = targetRef.current.x + Math.cos(rot) * Math.cos(pitch) * dist;
+    const camY = targetRef.current.y + Math.sin(pitch) * dist;
+    const camZ = targetRef.current.z + Math.sin(rot) * Math.cos(pitch) * dist;
+
+    camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.1);
+    camera.lookAt(targetRef.current);
+  });
+
+  // Listen for scroll zoom
+  useEffect(() => {
+    const handler = (e: WheelEvent) => {
+      zoomRef.current = Math.max(15, Math.min(80, zoomRef.current + e.deltaY * 0.05));
+    };
+    window.addEventListener('wheel', handler, { passive: true });
+    return () => window.removeEventListener('wheel', handler);
+  }, []);
+
+  // Listen for minimap click
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { x, z } = (e as CustomEvent).detail;
+      const w = gridToWorld(x, z);
+      targetRef.current.set(w.x, 0, w.z);
+    };
+    window.addEventListener('minimap-click', handler);
+    return () => window.removeEventListener('minimap-click', handler);
+  }, []);
+
+  // WASD movement
+  useEffect(() => {
+    const keysDown = new Set<string>();
+    const handleDown = (e: KeyboardEvent) => keysDown.add(e.key.toLowerCase());
+    const handleUp = (e: KeyboardEvent) => keysDown.delete(e.key.toLowerCase());
+
+    const moveLoop = setInterval(() => {
+      const speed = 0.5;
+      const rot = (rotationRef.current * Math.PI) / 180;
+      const forward = new THREE.Vector3(-Math.cos(rot), 0, -Math.sin(rot));
+      const right = new THREE.Vector3(Math.sin(rot), 0, -Math.cos(rot));
+
+      if (keysDown.has('w')) targetRef.current.add(forward.clone().multiplyScalar(speed));
+      if (keysDown.has('s')) targetRef.current.add(forward.clone().multiplyScalar(-speed));
+      if (keysDown.has('a')) targetRef.current.add(right.clone().multiplyScalar(-speed));
+      if (keysDown.has('d')) targetRef.current.add(right.clone().multiplyScalar(speed));
+
+      // Clamp
+      const half = GRID_SIZE / 2;
+      targetRef.current.x = Math.max(-half, Math.min(half, targetRef.current.x));
+      targetRef.current.z = Math.max(-half, Math.min(half, targetRef.current.z));
+    }, 16);
+
+    window.addEventListener('keydown', handleDown);
+    window.addEventListener('keyup', handleUp);
+    return () => {
+      window.removeEventListener('keydown', handleDown);
+      window.removeEventListener('keyup', handleUp);
+      clearInterval(moveLoop);
+    };
+  }, []);
 
   return null;
 }
@@ -123,6 +225,9 @@ export function Camera() {
 
   if (cameraMode === 'follow') {
     return <FollowCamera />;
+  }
+  if (cameraMode === 'quarter') {
+    return <QuarterViewCamera />;
   }
   return <FreeCamera />;
 }

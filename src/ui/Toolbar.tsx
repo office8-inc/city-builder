@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGameStore } from '../game/store.ts';
-import { TOOL_DEFS, SUBSIDIARY_COSTS, formatMoney } from '../game/constants.ts';
-import type { ToolType, SubsidiaryType } from '../game/types.ts';
+import { TOOL_DEFS, SUBSIDIARY_COSTS, TRAIN_TYPES, formatMoney } from '../game/constants.ts';
+import type { ToolType, SubsidiaryType, TrainVehicleType } from '../game/types.ts';
 
 type ToolCategory = 'rail' | 'station' | 'train' | 'subsidiary' | 'other';
 
@@ -18,6 +18,27 @@ const SUBSIDIARY_MENU: Array<{ type: SubsidiaryType; icon: string; label: string
   { type: 'hotel', icon: '🏨', label: 'ホテル' },
   { type: 'department_store', icon: '🏬', label: 'デパート' },
   { type: 'power_plant', icon: '⚡', label: '発電所' },
+  { type: 'depot', icon: '🔧', label: '車両基地' },
+  { type: 'material_yard', icon: '📦', label: '資材置場' },
+  { type: 'warehouse', icon: '🏚️', label: '倉庫' },
+  { type: 'resort_hotel', icon: '🏖️', label: 'リゾートホテル' },
+  { type: 'convenience_store', icon: '🏪', label: 'コンビニ' },
+  { type: 'supermarket', icon: '🛒', label: 'スーパー' },
+  { type: 'office_building', icon: '🏢', label: 'オフィスビル' },
+  { type: 'apartment', icon: '🏠', label: 'マンション' },
+  { type: 'amusement_park', icon: '🎡', label: '遊園地' },
+  { type: 'stadium', icon: '🏟️', label: 'スタジアム' },
+  { type: 'broadcast_tower', icon: '📡', label: '電波塔' },
+];
+
+const TRAIN_MENU: Array<{ type: TrainVehicleType; icon: string }> = [
+  { type: 'local', icon: '🚃' },
+  { type: 'suburban', icon: '🚈' },
+  { type: 'express', icon: '🚅' },
+  { type: 'diesel', icon: '🚂' },
+  { type: 'freight', icon: '🚛' },
+  { type: 'shinkansen', icon: '🚄' },
+  { type: 'steam', icon: '🚂' },
 ];
 
 export function Toolbar() {
@@ -25,6 +46,8 @@ export function Toolbar() {
   const setSelectedTool = useGameStore(s => s.setSelectedTool);
   const selectedSubsidiaryType = useGameStore(s => s.selectedSubsidiaryType);
   const setSelectedSubsidiaryType = useGameStore(s => s.setSelectedSubsidiaryType);
+  const selectedTrainType = useGameStore(s => s.selectedTrainType);
+  const setSelectedTrainType = useGameStore(s => s.setSelectedTrainType);
   const [activeCategory, setActiveCategory] = useState<ToolCategory | null>(null);
 
   const categoryTools = activeCategory
@@ -53,14 +76,21 @@ export function Toolbar() {
     setActiveCategory(null);
   };
 
+  const handleTrainTypeSelect = (type: TrainVehicleType) => {
+    setSelectedTrainType(type);
+    setSelectedTool('train_place');
+    setActiveCategory(null);
+  };
+
   const showSubsidiaryMenu = activeCategory === 'subsidiary';
+  const showTrainMenu = activeCategory === 'train';
 
   return (
     <div className="flex flex-col gap-1">
-      {/* Tool submenu or subsidiary submenu */}
-      {activeCategory && !showSubsidiaryMenu && categoryTools.length > 0 && (
-        <div className="ml-1 flex flex-col gap-0.5 p-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/10">
-          {categoryTools.map(({ tool, label, icon }) => {
+      {/* Tool submenu */}
+      {activeCategory && !showSubsidiaryMenu && !showTrainMenu && categoryTools.length > 0 && (
+        <div className="ml-1 flex flex-col gap-0.5 p-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 max-h-[60vh] overflow-y-auto">
+          {categoryTools.map(({ tool, label, icon, cost }) => {
             const isSelected = selectedTool === tool;
             return (
               <button
@@ -76,6 +106,34 @@ export function Toolbar() {
               >
                 <span className="text-base">{icon}</span>
                 <span className="font-medium">{label}</span>
+                {cost && <span className="text-white/40 ml-auto text-[10px]">{formatMoney(cost)}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Train submenu */}
+      {showTrainMenu && (
+        <div className="ml-1 flex flex-col gap-0.5 p-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 max-h-[60vh] overflow-y-auto">
+          {TRAIN_MENU.map(({ type, icon }) => {
+            const info = TRAIN_TYPES[type];
+            const isSelected = selectedTool === 'train_place' && selectedTrainType === type;
+            return (
+              <button
+                key={type}
+                onClick={() => handleTrainTypeSelect(type)}
+                className={`
+                  flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-all whitespace-nowrap
+                  ${isSelected
+                    ? 'bg-blue-500/80 text-white border border-blue-400/50'
+                    : 'text-gray-200 hover:bg-white/15 border border-transparent'
+                  }
+                `}
+              >
+                <span className="text-base">{icon}</span>
+                <span className="font-medium">{info.name}</span>
+                <span className="text-white/40 ml-auto text-[10px]">{formatMoney(info.cost)}</span>
               </button>
             );
           })}
@@ -84,7 +142,7 @@ export function Toolbar() {
 
       {/* Subsidiary submenu */}
       {showSubsidiaryMenu && (
-        <div className="ml-1 flex flex-col gap-0.5 p-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/10">
+        <div className="ml-1 flex flex-col gap-0.5 p-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/10 max-h-[60vh] overflow-y-auto">
           {SUBSIDIARY_MENU.map(({ type, icon, label }) => {
             const cost = SUBSIDIARY_COSTS[type];
             const isSelected = selectedTool === 'subsidiary_build' && selectedSubsidiaryType === type;
@@ -114,7 +172,8 @@ export function Toolbar() {
         {CATEGORIES.map(({ id, label, icon }) => {
           const isActive = activeCategory === id;
           const hasSelectedTool = TOOL_DEFS.some(t => t.category === id && t.tool === selectedTool) ||
-            (id === 'subsidiary' && selectedTool === 'subsidiary_build');
+            (id === 'subsidiary' && selectedTool === 'subsidiary_build') ||
+            (id === 'train' && selectedTool === 'train_place');
           return (
             <button
               key={id}

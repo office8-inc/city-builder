@@ -9,8 +9,10 @@ import { Stations } from './Stations.tsx';
 import { Trains } from './Trains.tsx';
 import { Buildings } from './Buildings.tsx';
 import { Subsidiaries } from './Subsidiaries.tsx';
+import { Roads } from './Roads.tsx';
 import { GridOverlay } from './GridHelper.tsx';
 import { Camera } from './Camera.tsx';
+import { Weather } from './Weather.tsx';
 import { useGameStore } from '../game/store.ts';
 import { GRID_SIZE } from '../game/constants.ts';
 import { worldToGrid, isValidGridPosition } from '../utils/grid.ts';
@@ -41,6 +43,11 @@ function InteractionPlane() {
   const buildStation = useGameStore(s => s.buildStation);
   const placeTrain = useGameStore(s => s.placeTrain);
   const buildSubsidiary = useGameStore(s => s.buildSubsidiary);
+  const removeTrack = useGameStore(s => s.removeTrack);
+  const bulldoze = useGameStore(s => s.bulldoze);
+  const placeSignal = useGameStore(s => s.placeSignal);
+  const buyLand = useGameStore(s => s.buyLand);
+  const sellLand = useGameStore(s => s.sellLand);
 
   const dragStartRef = useRef<{ x: number; z: number } | null>(null);
 
@@ -54,15 +61,22 @@ function InteractionPlane() {
     }
   }, [setHoveredTile]);
 
+  const isTrackTool = (tool: string) =>
+    tool === 'track_straight' || tool === 'track_diagonal' ||
+    tool === 'track_elevated' || tool === 'track_underground';
+
   const handlePointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    if (selectedTool === 'track_straight') {
+    if (isTrackTool(selectedTool)) {
       const gridPos = worldToGrid(e.point.x, e.point.z);
       if (isValidGridPosition(gridPos.x, gridPos.z)) {
         dragStartRef.current = gridPos;
       }
     }
   }, [selectedTool]);
+
+  const isStationTool = (tool: string) =>
+    tool.startsWith('station_');
 
   const handlePointerUp = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -72,13 +86,13 @@ function InteractionPlane() {
       return;
     }
 
-    if (selectedTool === 'track_straight' && dragStartRef.current) {
+    if (isTrackTool(selectedTool) && dragStartRef.current) {
       const start = dragStartRef.current;
       dragStartRef.current = null;
       if (start.x !== gridPos.x || start.z !== gridPos.z) {
         placeTrack(start.x, start.z, gridPos.x, gridPos.z);
       }
-    } else if (selectedTool === 'station_build') {
+    } else if (isStationTool(selectedTool)) {
       buildStation(gridPos.x, gridPos.z);
     } else if (selectedTool === 'train_place') {
       const state = useGameStore.getState();
@@ -88,8 +102,18 @@ function InteractionPlane() {
       }
     } else if (selectedTool === 'subsidiary_build') {
       buildSubsidiary(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'track_remove') {
+      removeTrack(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'bulldoze') {
+      bulldoze(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'signal_place') {
+      placeSignal(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'land_buy') {
+      buyLand(gridPos.x, gridPos.z);
+    } else if (selectedTool === 'land_sell') {
+      sellLand(gridPos.x, gridPos.z);
     }
-  }, [selectedTool, placeTrack, buildStation, placeTrain, buildSubsidiary]);
+  }, [selectedTool, placeTrack, buildStation, placeTrain, buildSubsidiary, removeTrack, bulldoze, placeSignal, buyLand, sellLand]);
 
   const handlePointerLeave = useCallback(() => {
     setHoveredTile(null);
@@ -126,6 +150,7 @@ function KeyboardControls() {
         case '2': setSpeed(2); break;
         case '3': setSpeed(4); break;
         case '4': setSpeed(8); break;
+        case '5': setSpeed(16); break;
         case ' ':
           e.preventDefault();
           setSpeed(speed === 0 ? 1 : 0);
@@ -143,6 +168,15 @@ function KeyboardControls() {
         case 'T':
           state.setCameraMode(state.cameraMode === 'follow' ? 'free' : 'follow');
           break;
+        case 'v':
+        case 'V':
+          if (state.cameraMode === 'follow') {
+            // Toggle follow mode between chase and cab
+            state.setFollowMode(state.followMode === 'chase' ? 'cab' : 'chase');
+          } else {
+            state.setCameraMode(state.cameraMode === 'quarter' ? 'free' : 'quarter');
+          }
+          break;
         case 's':
           if (!e.ctrlKey && !e.metaKey) state.saveGame();
           break;
@@ -157,7 +191,13 @@ function KeyboardControls() {
             state.toggleHelpPanel();
           } else if (state.showFinancePanel) {
             state.toggleFinancePanel();
+          } else if (state.showSchedulePanel) {
+            state.toggleSchedulePanel();
+          } else if (state.showSettingsPanel) {
+            state.toggleSettingsPanel();
           } else if (state.cameraMode === 'follow') {
+            state.setCameraMode('free');
+          } else if (state.cameraMode === 'quarter') {
             state.setCameraMode('free');
           } else if (state.selectedTool !== 'none') {
             state.setSelectedTool('none');
@@ -185,8 +225,7 @@ function KeyboardControls() {
 
 // Day/night lighting calculations
 function getDayNightParams(hour: number) {
-  // Sun angle: rises at 6, sets at 18
-  const sunAngle = ((hour - 6) / 12) * Math.PI; // 0 at sunrise, PI at sunset
+  const sunAngle = ((hour - 6) / 12) * Math.PI;
   const sunX = Math.cos(sunAngle) * 100;
   const sunY = Math.sin(sunAngle) * 100;
   const sunZ = 80;
@@ -202,8 +241,7 @@ function getDayNightParams(hour: number) {
   let skyTurbidity: number;
 
   if (isDaytime) {
-    // Daytime
-    const midday = 1 - Math.abs(hour - 12) / 6; // 0 at dawn/dusk, 1 at noon
+    const midday = 1 - Math.abs(hour - 12) / 6;
     ambientIntensity = 0.4 + midday * 0.15;
     ambientColor = '#b8c8d8';
     sunIntensity = 1.0 + midday * 0.6;
@@ -211,7 +249,6 @@ function getDayNightParams(hour: number) {
     fogColor = '#9ec8e8';
     skyTurbidity = 3;
   } else if (isTwilight) {
-    // Twilight
     ambientIntensity = 0.15;
     ambientColor = '#667799';
     sunIntensity = 0.3;
@@ -219,7 +256,6 @@ function getDayNightParams(hour: number) {
     fogColor = '#7799aa';
     skyTurbidity = 8;
   } else {
-    // Night
     ambientIntensity = 0.08;
     ambientColor = '#223355';
     sunIntensity = 0.05;
@@ -298,7 +334,6 @@ function DynamicSky() {
     [hour, minute]
   );
 
-  // Use both: Sky component for GPU-capable browsers + gradient sphere as fallback
   return (
     <group>
       <Sky
@@ -308,7 +343,6 @@ function DynamicSky() {
         mieCoefficient={0.005}
         mieDirectionalG={0.8}
       />
-      {/* Gradient sky sphere as backup/enhancement */}
       <mesh>
         <sphereGeometry args={[400, 32, 16]} />
         <meshBasicMaterial
@@ -337,11 +371,13 @@ export function GameScene() {
       <DynamicLights />
       <Camera />
       <Terrain />
+      <Roads />
       <Tracks />
       <Stations />
       <Trains />
       <Buildings />
       <Subsidiaries />
+      <Weather />
       <GridOverlay />
       <InteractionPlane />
       <SimulationLoop />
