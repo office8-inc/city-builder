@@ -126,6 +126,16 @@ export function developCity(state: GameState): Building[] {
         if (tile.terrain !== 'flat') continue;
         if (tile.buildingId || tile.stationId || tile.trackIds.length > 0) continue;
 
+        // Buffer zone: don't build within 1 tile of water
+        let nearWater = false;
+        for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+          const nx = x + dx, nz = z + dz;
+          if (nx >= 0 && nx < GRID_SIZE && nz >= 0 && nz < GRID_SIZE) {
+            if (map[nx][nz].terrain === 'water') { nearWater = true; break; }
+          }
+        }
+        if (nearWater) continue;
+
         const dist = Math.sqrt((x - station.x) ** 2 + (z - station.z) ** 2);
         if (dist > radius) continue;
 
@@ -166,6 +176,15 @@ export function developCity(state: GameState): Building[] {
               const t = map[tx][tz];
               if (t.terrain !== 'flat' || t.buildingId || t.stationId || t.trackIds.length > 0) {
                 fits = false;
+              }
+              // Check water buffer for multi-tile buildings too
+              if (fits) {
+                for (const [wdx, wdz] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+                  const wx = tx + wdx, wz = tz + wdz;
+                  if (wx >= 0 && wx < GRID_SIZE && wz >= 0 && wz < GRID_SIZE) {
+                    if (map[wx][wz].terrain === 'water') { fits = false; break; }
+                  }
+                }
               }
             }
           }

@@ -7,15 +7,15 @@ import { isDiagonal } from '../game/constants.ts';
 import type { TrackSegment, Signal } from '../game/types.ts';
 
 // Shared geometries
-const ballastGeo = new THREE.BoxGeometry(1.05, 0.05, 0.5);
-const railGeo = new THREE.BoxGeometry(1.05, 0.025, 0.025);
-const sleeperGeo = new THREE.BoxGeometry(0.08, 0.025, 0.38);
+const ballastGeo = new THREE.BoxGeometry(1.08, 0.06, 0.6);
+const railGeo = new THREE.BoxGeometry(1.08, 0.025, 0.03);
+const sleeperGeo = new THREE.BoxGeometry(0.09, 0.03, 0.45);
 const pillarGeo = new THREE.BoxGeometry(0.1, 1.0, 0.1);
 
 // Shared materials
 const ballastMat = new THREE.MeshStandardMaterial({
-  color: '#7a7060',
-  roughness: 0.95,
+  color: '#8a7a68',
+  roughness: 0.92,
   metalness: 0.0,
 });
 const railMat = new THREE.MeshStandardMaterial({

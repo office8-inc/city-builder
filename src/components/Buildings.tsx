@@ -244,12 +244,20 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
     const centerX = building.x + (building.width - 1) / 2;
     const centerZ = building.z + (building.depth - 1) / 2;
     const w = gridToWorld(centerX, centerZ);
-    const tile = map[building.x]?.[building.z];
-    const h = tile ? getTileWorldHeight(tile) : 0;
+    // 複数タイルにまたがる建物は最大地面高を使う（めり込み防止）
+    let h = 0;
+    for (let dx = 0; dx < building.width; dx++) {
+      for (let dz = 0; dz < building.depth; dz++) {
+        const t = map[building.x + dx]?.[building.z + dz];
+        if (t) h = Math.max(h, getTileWorldHeight(t));
+      }
+    }
 
     const seed = building.x * 1000 + building.z;
     const col = getBuildingColor(building.type, seed);
-    const bh = building.height * 0.15 * building.level;
+    // 高さスケール: 低い建物はそのまま、高い建物は圧縮（ジオラマ感を維持）
+    const rawH = building.height * building.level;
+    const bh = rawH <= 5 ? rawH * 0.12 : 0.6 + (rawH - 5) * 0.06;
 
     // レジャー・農業は高さを制限（公園/畑は高層にならない）
     let finalH = Math.max(0.2, bh);
@@ -271,8 +279,8 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
   }, [building, map]);
 
   const seed = building.x * 1000 + building.z;
-  const bw = building.width * 0.85;
-  const bd = building.depth * 0.85;
+  const bw = building.width * 0.78;
+  const bd = building.depth * 0.78;
   const hasWindows = lod === 'full' && (building.height > 1 || building.type === 'commercial' || building.type === 'office');
 
   // Use shared window texture
@@ -339,13 +347,14 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
   const hasBalcony = building.type === 'residential' && building.level >= 3 && buildingHeight > 0.6;
   const balconySide = seededRandom(seed + 333) > 0.5 ? 1 : -1;
 
-  // Simple LOD: colored box with slight base
+  // Simple LOD: colored box with roof color hint
   if (lod === 'simple') {
+    const simpleRoofColor = roofType === 'pitched' ? roofColor : '#888888';
     return (
       <group position={position}>
         <mesh position={[0, buildingHeight / 2, 0]} castShadow>
           <boxGeometry args={[bw, buildingHeight, bd]} />
-          <meshStandardMaterial color={color} roughness={0.8} />
+          <meshStandardMaterial color={color} roughness={0.7} />
         </mesh>
       </group>
     );
@@ -729,25 +738,27 @@ export function Buildings() {
   const buildingArray = useMemo(() => Array.from(buildings.values()), [buildings]);
 
   // Distance-based culling and LOD
-  const camTarget = useMemo(() => {
-    // Approximate camera target from camera position + direction
-    const dir = new THREE.Vector3();
-    camera.getWorldDirection(dir);
-    return new THREE.Vector3().copy(camera.position).add(dir.multiplyScalar(30));
-  }, [camera.position.x, camera.position.y, camera.position.z]);
+  // カメラの注視点をXZ平面に投影して距離を計算（Y座標無視）
+  const camPos = camera.position;
+  const camDir = new THREE.Vector3();
+  camera.getWorldDirection(camDir);
+  // 地面との交点を推定（カメラから地面方向へのレイ）
+  const t = camDir.y !== 0 ? -camPos.y / camDir.y : 20;
+  const lookAtX = camPos.x + camDir.x * Math.max(0, Math.min(t, 60));
+  const lookAtZ = camPos.z + camDir.z * Math.max(0, Math.min(t, 60));
 
   const visibleBuildings = useMemo(() => {
     const result: { building: Building; lod: LODLevel }[] = [];
     for (const b of buildingArray) {
       const w = gridToWorld(b.x, b.z);
-      const dx = w.x - camTarget.x;
-      const dz = w.z - camTarget.z;
+      const dx = w.x - lookAtX;
+      const dz = w.z - lookAtZ;
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 80) continue; // cull very far
-      result.push({ building: b, lod: dist < 30 ? 'full' : 'simple' });
+      if (dist > 80) continue; // カリング距離
+      result.push({ building: b, lod: dist < 40 ? 'full' : 'simple' });
     }
     return result;
-  }, [buildingArray, camTarget]);
+  }, [buildingArray, lookAtX, lookAtZ]);
 
   if (visibleBuildings.length === 0) return null;
 
