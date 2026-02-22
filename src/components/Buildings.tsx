@@ -358,7 +358,7 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
       roughness={0.55}
       metalness={building.type === 'office' ? 0.35 : 0.1}
       emissive={isNight ? '#ffdd88' : '#000000'}
-      emissiveIntensity={isNight ? 0.4 : 0}
+      emissiveIntensity={isNight ? 0.8 : 0}
       emissiveMap={isNight ? windowTex : undefined}
     />
   ) : (
@@ -560,7 +560,7 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
               <meshStandardMaterial
                 color={seededRandom(seed + 111) > 0.5 ? '#ee4444' : '#2255cc'}
                 emissive={isNight ? '#ffaa44' : '#000000'}
-                emissiveIntensity={isNight ? 0.6 : 0}
+                emissiveIntensity={isNight ? 1.5 : 0}
                 roughness={0.4}
               />
             </mesh>

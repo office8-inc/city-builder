@@ -256,11 +256,11 @@ function getDayNightParams(hour: number) {
     fogColor = '#7799aa';
     skyTurbidity = 8;
   } else {
-    ambientIntensity = 0.08;
-    ambientColor = '#223355';
-    sunIntensity = 0.05;
-    sunColor = '#334466';
-    fogColor = '#112233';
+    ambientIntensity = 0.22;
+    ambientColor = '#334466';
+    sunIntensity = 0.15;
+    sunColor = '#667799';
+    fogColor = '#1a2a40';
     skyTurbidity = 10;
   }
 
@@ -303,16 +303,17 @@ function DynamicLights() {
         shadow-camera-far={300}
         shadow-bias={-0.001}
       />
+      {/* 月光（夜間）/ フィルライト（昼間） */}
       <directionalLight
-        position={[-40, 50, -30]}
-        intensity={params.isDaytime ? 0.25 : 0.05}
-        color={params.isDaytime ? '#b4c8e8' : '#223344'}
+        position={params.isDaytime ? [-40, 50, -30] : [60, 80, 40]}
+        intensity={params.isDaytime ? 0.25 : 0.18}
+        color={params.isDaytime ? '#b4c8e8' : '#8899bb'}
       />
       <hemisphereLight
         args={[
-          params.isDaytime ? '#4a90d9' : '#112244',
-          params.isDaytime ? '#3a8a2a' : '#1a2a1a',
-          params.isDaytime ? 0.45 : 0.1,
+          params.isDaytime ? '#4a90d9' : '#2a3a5a',
+          params.isDaytime ? '#3a8a2a' : '#1a2a20',
+          params.isDaytime ? 0.45 : 0.25,
         ]}
       />
     </>
@@ -323,7 +324,7 @@ function DynamicFog() {
   const hour = useGameStore(s => s.gameTime.hour);
   const params = useMemo(() => getDayNightParams(hour), [hour]);
 
-  return <fog attach="fog" args={[params.fogColor, 100, 280]} />;
+  return <fog attach="fog" args={[params.fogColor, params.isDaytime ? 100 : 80, params.isDaytime ? 280 : 220]} />;
 }
 
 function DynamicSky() {
@@ -346,7 +347,7 @@ function DynamicSky() {
       <mesh>
         <sphereGeometry args={[400, 32, 16]} />
         <meshBasicMaterial
-          color={params.isDaytime ? '#5b9bd5' : '#0a1628'}
+          color={params.isDaytime ? '#5b9bd5' : '#152540'}
           side={THREE.BackSide}
           transparent
           opacity={0.3}

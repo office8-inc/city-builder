@@ -492,3 +492,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   setScenarioId: (id: string | null) => set({ scenarioId: id }),
   setWeatherType: (type: WeatherType) => set({ weatherType: type }),
 }));
+
+// 開発時のみ: ブラウザコンソールからストアにアクセス
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__gameStore = useGameStore;
+}
