@@ -129,7 +129,7 @@ export function HUD() {
       </div>
 
       {/* Right panel - stats */}
-      <div className="pointer-events-auto absolute top-16 right-2">
+      <div className="pointer-events-auto absolute top-16 right-2.5">
         <StatsPanel />
       </div>
 
@@ -159,7 +159,7 @@ export function HUD() {
       </div>
 
       {/* Center top - notifications */}
-      <div className="absolute top-16 left-1/2 -translate-x-1/2">
+      <div className="pointer-events-auto absolute top-16 left-1/2 -translate-x-1/2">
         <Notifications />
       </div>
 

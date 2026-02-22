@@ -10,7 +10,7 @@ export function MiniMap() {
   const subsidiaries = useGameStore(s => s.subsidiaries);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const size = 140;
+  const size = 160;
   const scale = size / GRID_SIZE;
 
   useEffect(() => {

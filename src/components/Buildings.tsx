@@ -1,10 +1,68 @@
-import { useMemo } from 'react';
+import { useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
+import { useGLTF, Clone } from '@react-three/drei';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import type { Building, BuildingCategory } from '../game/types.ts';
+
+// Kenney GLB model paths (prefixed with base URL for Vite)
+const BASE = import.meta.env.BASE_URL;
+const MODEL_PATHS = {
+  garage: BASE + 'models/building-garage.glb',
+  smallA: BASE + 'models/building-small-a.glb',
+  smallB: BASE + 'models/building-small-b.glb',
+  smallC: BASE + 'models/building-small-c.glb',
+  smallD: BASE + 'models/building-small-d.glb',
+} as const;
+
+// Preload all models
+Object.values(MODEL_PATHS).forEach(path => useGLTF.preload(path));
+
+// Map building categories + seed to model keys
+function pickModelKey(category: BuildingCategory, seed: number): keyof typeof MODEL_PATHS | null {
+  // Only use GLB models for certain categories and sizes
+  if (category === 'agriculture' || category === 'leisure') return null;
+  if (category === 'industrial') return 'garage';
+  const variants: (keyof typeof MODEL_PATHS)[] = ['smallA', 'smallB', 'smallC', 'smallD'];
+  return variants[Math.abs(seed) % variants.length];
+}
+
+// GLB model building component
+function GLBBuildingMesh({ building, position, modelKey }: {
+  building: Building;
+  position: [number, number, number];
+  modelKey: keyof typeof MODEL_PATHS;
+}) {
+  const { scene } = useGLTF(MODEL_PATHS[modelKey]);
+
+  // Scale model to fit building dimensions
+  const bw = building.width * 0.78;
+  const bd = building.depth * 0.78;
+  const rawH = building.height * building.level;
+  const bh = rawH <= 5 ? rawH * 0.12 : 0.6 + (rawH - 5) * 0.06;
+  const finalH = Math.max(0.2, bh);
+
+  // Kenney models are typically ~1 unit. Scale to match our grid.
+  const modelScale = Math.min(bw, bd) * 0.85;
+  const heightScale = finalH * 1.2;
+
+  const seed = building.x * 1000 + building.z;
+  const rotY = (Math.floor(seededRandom(seed + 50) * 4)) * (Math.PI / 2);
+
+  return (
+    <group position={position}>
+      <Clone
+        object={scene}
+        scale={[modelScale, heightScale, modelScale]}
+        rotation={[0, rotY, 0]}
+        castShadow
+        receiveShadow
+      />
+    </group>
+  );
+}
 
 // Seeded random for consistent building appearance per tile
 function seededRandom(seed: number): number {
@@ -223,6 +281,50 @@ function getSharedWindowTexture(
   return tex;
 }
 
+// プロシージャル環境マップ（空のグラデーション、ガラス反射用）
+let envMapDay: THREE.CubeTexture | null = null;
+let envMapNight: THREE.CubeTexture | null = null;
+
+function getEnvMap(isNight: boolean): THREE.CubeTexture {
+  if (isNight && envMapNight) return envMapNight;
+  if (!isNight && envMapDay) return envMapDay;
+
+  const size = 64;
+  const faces: HTMLCanvasElement[] = [];
+
+  for (let f = 0; f < 6; f++) {
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+
+    const grad = ctx.createLinearGradient(0, 0, 0, size);
+    if (isNight) {
+      grad.addColorStop(0, '#0a1628');
+      grad.addColorStop(0.5, '#1a2a48');
+      grad.addColorStop(1, '#2a3a58');
+    } else {
+      grad.addColorStop(0, '#4a90d9');
+      grad.addColorStop(0.3, '#87ceeb');
+      grad.addColorStop(0.7, '#b8dff0');
+      grad.addColorStop(1, '#d8e8d0');
+    }
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, size, size);
+    faces.push(canvas);
+  }
+
+  const tex = new THREE.CubeTexture(faces);
+  tex.needsUpdate = true;
+
+  if (isNight) {
+    envMapNight = tex;
+  } else {
+    envMapDay = tex;
+  }
+  return tex;
+}
+
 // Flush texture cache when day/night changes
 let lastNightState: boolean | null = null;
 function flushTexturesIfNeeded(isNight: boolean) {
@@ -233,8 +335,8 @@ function flushTexturesIfNeeded(isNight: boolean) {
   lastNightState = isNight;
 }
 
-// LOD levels: 'full' = windows + details, 'simple' = colored box only
-type LODLevel = 'full' | 'simple';
+// LOD levels: 'glb' = external model, 'full' = windows + details, 'simple' = colored box only
+type LODLevel = 'glb' | 'full' | 'simple';
 
 // Individual building mesh
 function BuildingMesh({ building, isNight, lod }: { building: Building; isNight: boolean; lod: LODLevel }) {
@@ -347,25 +449,39 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
   const hasBalcony = building.type === 'residential' && building.level >= 3 && buildingHeight > 0.6;
   const balconySide = seededRandom(seed + 333) > 0.5 ? 1 : -1;
 
-  // Simple LOD: colored box with roof color hint
+  // Simple LOD: colored box with pitched roof hint
   if (lod === 'simple') {
-    const simpleRoofColor = roofType === 'pitched' ? roofColor : '#888888';
     return (
       <group position={position}>
         <mesh position={[0, buildingHeight / 2, 0]} castShadow>
           <boxGeometry args={[bw, buildingHeight, bd]} />
           <meshStandardMaterial color={color} roughness={0.7} />
         </mesh>
+        {roofType === 'pitched' && (
+          <mesh position={[0, buildingHeight + 0.06, 0]} castShadow>
+            <coneGeometry args={[bw * 0.55, 0.12, 4]} />
+            <meshStandardMaterial color={roofColor} roughness={0.85} />
+          </mesh>
+        )}
       </group>
     );
   }
+
+  const envMap = useMemo(() => {
+    if (building.type === 'office' || building.type === 'commercial') {
+      return getEnvMap(isNight);
+    }
+    return null;
+  }, [building.type, isNight]);
 
   const wallMat = windowTex ? (
     <meshStandardMaterial
       map={windowTex}
       color={color}
-      roughness={0.55}
-      metalness={building.type === 'office' ? 0.35 : 0.1}
+      roughness={building.type === 'office' ? 0.35 : 0.55}
+      metalness={building.type === 'office' ? 0.5 : 0.1}
+      envMap={envMap}
+      envMapIntensity={building.type === 'office' ? 0.8 : 0.3}
       emissive={isNight ? '#ffdd88' : '#000000'}
       emissiveIntensity={isNight ? 0.8 : 0}
       emissiveMap={isNight ? windowTex : undefined}
@@ -727,6 +843,35 @@ function BuildingMesh({ building, isNight, lod }: { building: Building; isNight:
   );
 }
 
+// Wrapper that renders GLB or procedural building based on LOD
+function BuildingRenderer({ building, isNight, lod }: { building: Building; isNight: boolean; lod: LODLevel }) {
+  const map = useGameStore(s => s.map);
+
+  if (lod === 'glb') {
+    const seed = building.x * 1000 + building.z;
+    const modelKey = pickModelKey(building.type, seed);
+    if (modelKey) {
+      // Compute position for GLB model
+      const centerX = building.x + (building.width - 1) / 2;
+      const centerZ = building.z + (building.depth - 1) / 2;
+      const w = gridToWorld(centerX, centerZ);
+      let h = 0;
+      for (let dx = 0; dx < building.width; dx++) {
+        for (let dz = 0; dz < building.depth; dz++) {
+          const t = map[building.x + dx]?.[building.z + dz];
+          if (t) h = Math.max(h, getTileWorldHeight(t));
+        }
+      }
+      return (
+        <Suspense fallback={<BuildingMesh building={building} isNight={isNight} lod="full" />}>
+          <GLBBuildingMesh building={building} position={[w.x, h, w.z]} modelKey={modelKey} />
+        </Suspense>
+      );
+    }
+  }
+  return <BuildingMesh building={building} isNight={isNight} lod={lod === 'glb' ? 'full' : lod} />;
+}
+
 export function Buildings() {
   const buildings = useGameStore(s => s.buildings);
   const hour = useGameStore(s => s.gameTime.hour);
@@ -738,11 +883,9 @@ export function Buildings() {
   const buildingArray = useMemo(() => Array.from(buildings.values()), [buildings]);
 
   // Distance-based culling and LOD
-  // カメラの注視点をXZ平面に投影して距離を計算（Y座標無視）
   const camPos = camera.position;
   const camDir = new THREE.Vector3();
   camera.getWorldDirection(camDir);
-  // 地面との交点を推定（カメラから地面方向へのレイ）
   const t = camDir.y !== 0 ? -camPos.y / camDir.y : 20;
   const lookAtX = camPos.x + camDir.x * Math.max(0, Math.min(t, 60));
   const lookAtZ = camPos.z + camDir.z * Math.max(0, Math.min(t, 60));
@@ -754,8 +897,10 @@ export function Buildings() {
       const dx = w.x - lookAtX;
       const dz = w.z - lookAtZ;
       const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist > 80) continue; // カリング距離
-      result.push({ building: b, lod: dist < 40 ? 'full' : 'simple' });
+      if (dist > 120) continue;
+      // 3-tier LOD: close=GLB model, medium=procedural detailed, far=simple box
+      const lod: LODLevel = dist < 30 ? 'glb' : dist < 60 ? 'full' : 'simple';
+      result.push({ building: b, lod });
     }
     return result;
   }, [buildingArray, lookAtX, lookAtZ]);
@@ -765,7 +910,7 @@ export function Buildings() {
   return (
     <group>
       {visibleBuildings.map(({ building, lod }) => (
-        <BuildingMesh key={building.id} building={building} isNight={isNight} lod={lod} />
+        <BuildingRenderer key={building.id} building={building} isNight={isNight} lod={lod} />
       ))}
     </group>
   );

@@ -1,7 +1,20 @@
 import { useMemo } from 'react';
 import { useGameStore } from '../game/store.ts';
-import { formatMoney } from '../game/constants.ts';
 import type { BuildingCategory } from '../game/types.ts';
+
+/** Compact money format for narrow panels: 5.7億円, 1234万円 */
+function compactMoney(amount: number): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  if (abs >= 100_000_000) {
+    const oku = (abs / 100_000_000).toFixed(1);
+    return `${sign}${oku}億円`;
+  }
+  if (abs >= 10_000) {
+    return `${sign}${Math.floor(abs / 10_000)}万円`;
+  }
+  return `${sign}${abs.toLocaleString()}円`;
+}
 
 const CATEGORY_LABELS: Record<BuildingCategory, string> = {
   residential: '住宅',
@@ -37,7 +50,7 @@ export function StatsPanel() {
     expenses.staffCost + expenses.subsidiaryRunning + expenses.interestPayment;
 
   return (
-    <div className="w-48 p-3 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-white shadow-lg">
+    <div className="w-48 p-2.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-white shadow-lg max-h-[calc(100vh-8rem)] overflow-y-auto">
       <div className="text-xs font-bold mb-2 text-white/70 uppercase tracking-wider">経営情報</div>
 
       <div className="space-y-1.5 text-xs">
@@ -85,30 +98,30 @@ export function StatsPanel() {
         <div className="text-white/50 font-bold text-[10px] uppercase tracking-wider">四半期収支</div>
         <div className="flex justify-between">
           <span className="text-white/60">運賃</span>
-          <span className="text-emerald-400 font-medium">{formatMoney(income.railFare)}</span>
+          <span className="text-emerald-400 font-medium">{compactMoney(income.railFare)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-white/60">子会社</span>
-          <span className="text-emerald-400 font-medium">{formatMoney(income.subsidiary)}</span>
+          <span className="text-emerald-400 font-medium">{compactMoney(income.subsidiary)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-white/60">税収</span>
-          <span className="text-emerald-400 font-medium">{formatMoney(income.other)}</span>
+          <span className="text-emerald-400 font-medium">{compactMoney(income.other)}</span>
         </div>
         {income.landRent > 0 && (
           <div className="flex justify-between">
             <span className="text-white/60">地代</span>
-            <span className="text-emerald-400 font-medium">{formatMoney(income.landRent)}</span>
+            <span className="text-emerald-400 font-medium">{compactMoney(income.landRent)}</span>
           </div>
         )}
         <div className="flex justify-between">
           <span className="text-white/60">支出</span>
-          <span className="text-red-400 font-medium">{formatMoney(totalExpenses)}</span>
+          <span className="text-red-400 font-medium">{compactMoney(totalExpenses)}</span>
         </div>
         <div className="flex justify-between border-t border-white/10 pt-1">
           <span className="text-white/60">損益</span>
           <span className={`font-bold ${totalIncome - totalExpenses >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            {formatMoney(totalIncome - totalExpenses)}
+            {compactMoney(totalIncome - totalExpenses)}
           </span>
         </div>
       </div>
