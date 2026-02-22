@@ -36,7 +36,7 @@ const initialFinance: Finance = {
 };
 
 const initialTime: GameTime = {
-  year: INITIAL_YEAR, month: 4, day: 1, hour: 6, minute: 0,
+  year: INITIAL_YEAR, month: 4, day: 1, hour: 10, minute: 0,
 };
 
 export const useGameStore = create<GameState>((set, get) => ({

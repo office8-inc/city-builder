@@ -36,8 +36,8 @@ function GroundMesh() {
         positions.setY(i, -0.05);
       }
 
-      // Vertex color
-      const [r, g, b] = getTerrainColor(tile.terrain, tile.height);
+      // Vertex color with per-tile noise variation
+      const [r, g, b] = getTerrainColor(tile.terrain, tile.height, gx, gz);
       colors[i * 3] = r;
       colors[i * 3 + 1] = g;
       colors[i * 3 + 2] = b;
@@ -63,20 +63,30 @@ function WaterPlane() {
     return new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uColor1: { value: new THREE.Color('#2a6fbd') },
-        uColor2: { value: new THREE.Color('#1a4f8d') },
+        uColor1: { value: new THREE.Color('#1a5fb4') },
+        uColor2: { value: new THREE.Color('#0d47a1') },
       },
       vertexShader: `
         uniform float uTime;
         varying vec2 vUv;
         varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
         void main() {
           vUv = uv;
           vec3 pos = position;
-          pos.y += sin(pos.x * 2.0 + uTime * 1.2) * 0.02
-                 + cos(pos.z * 1.8 + uTime * 0.9) * 0.015
-                 + sin((pos.x + pos.z) * 1.5 + uTime * 0.7) * 0.01;
+          pos.y += sin(pos.x * 2.0 + uTime * 1.2) * 0.05
+                 + cos(pos.z * 1.8 + uTime * 0.9) * 0.035
+                 + sin((pos.x + pos.z) * 1.5 + uTime * 0.7) * 0.025;
           vWorldPos = pos;
+          // Approximate normal from wave derivatives
+          float dx = cos(pos.x * 2.0 + uTime * 1.2) * 2.0 * 0.05
+                   + cos((pos.x + pos.z) * 1.5 + uTime * 0.7) * 1.5 * 0.025;
+          float dz = -sin(pos.z * 1.8 + uTime * 0.9) * 1.8 * 0.035
+                   + cos((pos.x + pos.z) * 1.5 + uTime * 0.7) * 1.5 * 0.025;
+          vNormal = normalize(vec3(-dx, 1.0, -dz));
+          vec4 worldPos4 = modelMatrix * vec4(pos, 1.0);
+          vViewDir = normalize(cameraPosition - worldPos4.xyz);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
       `,
@@ -86,12 +96,21 @@ function WaterPlane() {
         uniform vec3 uColor2;
         varying vec2 vUv;
         varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
         void main() {
           float wave = sin(vWorldPos.x * 4.0 + uTime * 1.5) * cos(vWorldPos.z * 3.0 + uTime * 1.0);
-          float spec = pow(max(wave, 0.0), 12.0) * 0.4;
+          float spec = pow(max(wave, 0.0), 12.0) * 0.5;
           vec3 color = mix(uColor1, uColor2, wave * 0.5 + 0.5);
+          // Fresnel reflection — brighter at glancing angles
+          float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 3.0);
+          vec3 skyReflect = vec3(0.45, 0.65, 0.9);
+          color = mix(color, skyReflect, fresnel * 0.5);
           color += vec3(spec);
-          gl_FragColor = vec4(color, 0.82);
+          // Foam at shallow edges (where y is close to shore height)
+          float foam = smoothstep(-0.08, -0.02, vWorldPos.y) * 0.3;
+          color = mix(color, vec3(0.85, 0.92, 0.98), foam);
+          gl_FragColor = vec4(color, 0.85);
         }
       `,
       transparent: true,

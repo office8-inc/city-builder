@@ -205,11 +205,11 @@ function getDayNightParams(hour: number) {
   if (isDaytime) {
     // Daytime
     const midday = 1 - Math.abs(hour - 12) / 6; // 0 at dawn/dusk, 1 at noon
-    ambientIntensity = 0.25 + midday * 0.2;
-    ambientColor = '#8eaacc';
-    sunIntensity = 0.8 + midday * 0.5;
+    ambientIntensity = 0.4 + midday * 0.15;
+    ambientColor = '#b8c8d8';
+    sunIntensity = 1.0 + midday * 0.6;
     sunColor = midday > 0.5 ? '#fff5e6' : '#ffddaa';
-    fogColor = '#b4d7f0';
+    fogColor = '#a0c8e8';
     skyTurbidity = 3;
   } else if (isTwilight) {
     // Twilight
@@ -260,10 +260,10 @@ function DynamicLights() {
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
-        shadow-camera-left={-70}
-        shadow-camera-right={70}
-        shadow-camera-top={70}
-        shadow-camera-bottom={-70}
+        shadow-camera-left={-100}
+        shadow-camera-right={100}
+        shadow-camera-top={100}
+        shadow-camera-bottom={-100}
         shadow-camera-near={1}
         shadow-camera-far={300}
         shadow-bias={-0.001}
@@ -275,9 +275,9 @@ function DynamicLights() {
       />
       <hemisphereLight
         args={[
-          params.isDaytime ? '#87ceeb' : '#112244',
-          params.isDaytime ? '#5a9e3e' : '#1a2a1a',
-          params.isDaytime ? 0.3 : 0.1,
+          params.isDaytime ? '#4a90d9' : '#112244',
+          params.isDaytime ? '#3a8a2a' : '#1a2a1a',
+          params.isDaytime ? 0.45 : 0.1,
         ]}
       />
     </>
@@ -288,7 +288,7 @@ function DynamicFog() {
   const hour = useGameStore(s => s.gameTime.hour);
   const params = useMemo(() => getDayNightParams(hour), [hour]);
 
-  return <fog attach="fog" args={[params.fogColor, 80, 200]} />;
+  return <fog attach="fog" args={[params.fogColor, 60, 160]} />;
 }
 
 function DynamicSky() {
@@ -303,7 +303,7 @@ function DynamicSky() {
     <Sky
       sunPosition={params.sunPosition}
       turbidity={params.skyTurbidity}
-      rayleigh={params.isDaytime ? 0.5 : 0.1}
+      rayleigh={params.isDaytime ? 2.0 : 0.1}
       mieCoefficient={0.005}
       mieDirectionalG={0.8}
     />
@@ -334,7 +334,7 @@ export function GameScene() {
       <KeyboardControls />
       <EffectComposer multisampling={0}>
         <ToneMapping mode={ToneMappingMode.AGX} />
-        <Bloom luminanceThreshold={0.9} luminanceSmoothing={0.4} intensity={0.3} />
+        <Bloom luminanceThreshold={0.7} luminanceSmoothing={0.4} intensity={0.4} />
         <Vignette eskil={false} offset={0.2} darkness={0.4} />
         <SMAA />
       </EffectComposer>

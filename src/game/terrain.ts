@@ -142,36 +142,65 @@ export function getTileWorldHeight(tile: MapTile): number {
   return tile.height * 0.15; // Scale height to world units
 }
 
-// Get terrain color for rendering
-export function getTerrainColor(terrain: TerrainType, height: number): [number, number, number] {
+// Simple hash for per-tile color variation (no extra dependency)
+function tileHash(x: number, z: number): number {
+  let h = (x * 374761393 + z * 668265263 + 13) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h = h ^ (h >>> 16);
+  return (h >>> 0) / 4294967296; // 0..1
+}
+
+// Get terrain color for rendering — now with per-tile noise variation
+export function getTerrainColor(terrain: TerrainType, height: number, tileX?: number, tileZ?: number): [number, number, number] {
+  const noise = (tileX !== undefined && tileZ !== undefined) ? tileHash(tileX, tileZ) : 0.5;
+  // Secondary noise at different frequency for dirt patches
+  const noise2 = (tileX !== undefined && tileZ !== undefined) ? tileHash(tileX + 317, tileZ + 523) : 0.5;
+
   switch (terrain) {
     case 'water':
-      return [0.227, 0.482, 0.835]; // #3a7bd5
+      return [0.10, 0.37, 0.65]; // deeper blue
     case 'mountain': {
       const t = (height - 8) / 2;
+      // Gray/rocky mountain tops with slight variation
       return [
-        0.54 + t * 0.1,
-        0.54 + t * 0.1,
-        0.48 + t * 0.1,
+        0.48 + t * 0.12 + (noise - 0.5) * 0.06,
+        0.47 + t * 0.10 + (noise - 0.5) * 0.05,
+        0.44 + t * 0.10 + (noise - 0.5) * 0.04,
       ];
     }
     case 'hill': {
       const t = (height - 6) / 2;
+      // Richer greens with some brown rocky patches at higher parts
+      const rocky = t > 0.6 ? (t - 0.6) * 0.5 : 0;
       return [
-        0.42 + t * 0.08,
-        0.55 + t * 0.05,
-        0.32 + t * 0.06,
+        0.35 + t * 0.08 + rocky * 0.15 + (noise - 0.5) * 0.06,
+        0.52 + t * 0.03 - rocky * 0.1 + (noise - 0.5) * 0.05,
+        0.25 + t * 0.04 + rocky * 0.05 + (noise - 0.5) * 0.04,
       ];
     }
-    case 'forest':
-      return [0.18, 0.48, 0.18]; // dark green
+    case 'forest': {
+      // Vary forest between dark green and slightly brownish green
+      const v = noise * 0.12;
+      return [0.12 + v, 0.42 + noise * 0.08, 0.10 + v * 0.5]; // richer dark green
+    }
     case 'flat':
     default: {
       const t = Math.max(0, Math.min(1, (height - 2) / 4));
+      // Valleys near water (low height) are darker/richer
+      const valleyBoost = height <= 2 ? 0.06 : 0;
+      // Random brown dirt patches
+      const isDirt = noise2 > 0.85;
+      if (isDirt) {
+        return [
+          0.45 + (noise - 0.5) * 0.06,
+          0.38 + (noise - 0.5) * 0.04,
+          0.22 + (noise - 0.5) * 0.03,
+        ];
+      }
       return [
-        0.35 + t * 0.05,
-        0.62 - t * 0.05,
-        0.24 + t * 0.02,
+        0.28 + t * 0.06 + (noise - 0.5) * 0.08 - valleyBoost * 0.5,
+        0.58 - t * 0.04 + (noise - 0.5) * 0.06 + valleyBoost,
+        0.18 + t * 0.02 + (noise - 0.5) * 0.04,
       ];
     }
   }
