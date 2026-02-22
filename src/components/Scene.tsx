@@ -2,7 +2,7 @@ import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Sky, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
-import { EffectComposer, Bloom, SMAA, Vignette, N8AO, TiltShift2, BrightnessContrast, HueSaturation } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, SMAA, Vignette, N8AO, BrightnessContrast, HueSaturation } from '@react-three/postprocessing';
 import { Terrain } from './Terrain.tsx';
 import { Tracks } from './Tracks.tsx';
 import { Stations } from './Stations.tsx';
@@ -399,13 +399,7 @@ export function GameScene() {
           distanceFalloff={0.5}
           quality="medium"
         />
-        <TiltShift2
-          blur={0.07}
-          taper={0.8}
-          start={[0, 0.6]}
-          end={[0, 0.4]}
-        />
-        <BrightnessContrast brightness={0.02} contrast={0.12} />
+<BrightnessContrast brightness={0.02} contrast={0.12} />
         <HueSaturation saturation={0.15} />
         <Bloom luminanceThreshold={0.75} luminanceSmoothing={0.3} intensity={0.4} />
         <Vignette eskil={false} offset={0.1} darkness={0.45} />
