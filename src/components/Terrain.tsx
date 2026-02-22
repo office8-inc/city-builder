@@ -202,7 +202,7 @@ function ForestInstances() {
     if (canopyData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
       new THREE.SphereGeometry(1, 6, 4),
-      new THREE.MeshStandardMaterial({ color: '#1a6a1a', roughness: 0.8 }),
+      new THREE.MeshStandardMaterial({ color: '#2d8a2d', roughness: 0.75 }),
       canopyData.length,
     );
     const matrix = new THREE.Matrix4();
@@ -292,7 +292,7 @@ function UrbanTrees() {
     if (canopyData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
       new THREE.ConeGeometry(1, 1, 6),
-      new THREE.MeshStandardMaterial({ color: '#2a7a2a', roughness: 0.8 }),
+      new THREE.MeshStandardMaterial({ color: '#358a35', roughness: 0.75 }),
       canopyData.length,
     );
     const matrix = new THREE.Matrix4();

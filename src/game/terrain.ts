@@ -188,12 +188,12 @@ export function getTerrainColor(terrain: TerrainType, height: number, tileX?: nu
       const t = Math.max(0, Math.min(1, (height - 2) / 4));
       // Valleys near water (low height) are darker/richer
       const valleyBoost = height <= 2 ? 0.06 : 0;
-      // Random brown dirt patches
-      const isDirt = noise2 > 0.85;
+      // Occasional subtle dirt patches (less frequent, more natural)
+      const isDirt = noise2 > 0.92;
       if (isDirt) {
         return [
-          0.45 + (noise - 0.5) * 0.06,
           0.38 + (noise - 0.5) * 0.04,
+          0.42 + (noise - 0.5) * 0.04,
           0.22 + (noise - 0.5) * 0.03,
         ];
       }
