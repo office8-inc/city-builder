@@ -66,7 +66,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastAutoSaveDay: 0,
 
   // Game phase
-  gamePhase: 'title',
+  gamePhase: (typeof window !== 'undefined' && window.location.search.includes('autoplay')) ? 'playing' : 'title',
   tutorialStep: 0,
   showHelpPanel: false,
 
