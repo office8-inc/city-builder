@@ -19,10 +19,11 @@ import { worldToGrid, isValidGridPosition } from '../utils/grid.ts';
 function SimulationLoop() {
   const tick = useGameStore(s => s.tick);
   const speed = useGameStore(s => s.speed);
+  const gamePhase = useGameStore(s => s.gamePhase);
   const tickAccumulator = useRef(0);
 
   useFrame((_, delta) => {
-    if (speed === 0) return;
+    if (speed === 0 || gamePhase === 'title') return;
     const ticksPerSecond = speed * 4;
     tickAccumulator.current += delta * ticksPerSecond;
     while (tickAccumulator.current >= 1) {
@@ -117,6 +118,10 @@ function KeyboardControls() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const state = useGameStore.getState();
+      // Don't handle shortcuts during title/tutorial phases (except Escape)
+      if (state.gamePhase !== 'playing' && e.key !== 'Escape') return;
+
       switch (e.key) {
         case '1': setSpeed(1); break;
         case '2': setSpeed(2); break;
@@ -128,20 +133,40 @@ function KeyboardControls() {
           break;
         case 'f':
         case 'F':
-          useGameStore.getState().toggleFinancePanel();
+          state.toggleFinancePanel();
+          break;
+        case 'h':
+        case 'H':
+        case '?':
+          state.toggleHelpPanel();
+          break;
+        case 't':
+        case 'T':
+          state.setCameraMode(state.cameraMode === 'follow' ? 'free' : 'follow');
+          break;
+        case 's':
+          if (!e.ctrlKey && !e.metaKey) state.saveGame();
+          break;
+        case 'l':
+          if (!e.ctrlKey && !e.metaKey) {
+            state.loadGame();
+            state.setGamePhase('playing');
+          }
           break;
         case 'Escape': {
-          const state = useGameStore.getState();
-          if (state.showFinancePanel) {
+          if (state.showHelpPanel) {
+            state.toggleHelpPanel();
+          } else if (state.showFinancePanel) {
             state.toggleFinancePanel();
           } else if (state.cameraMode === 'follow') {
             state.setCameraMode('free');
+          } else if (state.selectedTool !== 'none') {
+            state.setSelectedTool('none');
           }
           break;
         }
         case 'Tab': {
           e.preventDefault();
-          const state = useGameStore.getState();
           if (state.cameraMode === 'follow' && state.trains.size > 0) {
             const ids = Array.from(state.trains.keys());
             const currentIdx = state.followTrainId ? ids.indexOf(state.followTrainId) : -1;

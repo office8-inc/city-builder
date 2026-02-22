@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   GameState,
+  GamePhase,
   ToolType,
   GameSpeed,
   CameraMode,
@@ -64,6 +65,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   lastLevelUpMonth: 0,
   lastAutoSaveDay: 0,
 
+  // Game phase
+  gamePhase: 'title',
+  tutorialStep: 0,
+  showHelpPanel: false,
+
   // UI
   selectedTool: 'none',
   selectedSubsidiaryType: null,
@@ -124,8 +130,8 @@ export const useGameStore = create<GameState>((set, get) => ({
         train.passengers = Math.min(train.capacity, state.stations.size * 50);
       }
 
-      // Auto city development
-      if (state.stations.size > 0) {
+      // Auto city development (every 2 days to reduce CPU load)
+      if (state.stations.size > 0 && dayId % 2 === 0) {
         const newBuildings = developCity(state);
         if (newBuildings.length > 0) {
           const updatedBuildings = new Map(state.buildings);
@@ -194,6 +200,25 @@ export const useGameStore = create<GameState>((set, get) => ({
   buildSubsidiary: createBuildSubsidiary(set, get),
 
   toggleFinancePanel: () => set(s => ({ showFinancePanel: !s.showFinancePanel })),
+  toggleHelpPanel: () => set(s => ({ showHelpPanel: !s.showHelpPanel })),
+
+  setGamePhase: (phase: GamePhase) => set({ gamePhase: phase }),
+
+  nextTutorialStep: () => {
+    const state = get();
+    const nextStep = state.tutorialStep + 1;
+    if (nextStep >= 5) {
+      set({ tutorialStep: 0, gamePhase: 'playing' });
+      localStorage.setItem('atrain-tutorial-done', '1');
+    } else {
+      set({ tutorialStep: nextStep });
+    }
+  },
+
+  skipTutorial: () => {
+    set({ tutorialStep: 0, gamePhase: 'playing' });
+    localStorage.setItem('atrain-tutorial-done', '1');
+  },
 
   saveGame: () => {
     saveToLocalStorage(get());
@@ -203,7 +228,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   loadGame: () => {
     const loaded = loadFromLocalStorage();
     if (loaded) {
-      set(loaded as GameState);
+      set({ ...loaded, gamePhase: 'playing' } as GameState);
       get().addNotification('📂 ゲームをロードしました');
     } else {
       get().addNotification('セーブデータが見つかりません');

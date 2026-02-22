@@ -158,6 +158,9 @@ export interface QuarterlyRecord {
   expenses: number;
 }
 
+// === Game Phase ===
+export type GamePhase = 'title' | 'playing' | 'tutorial';
+
 // === Camera Mode ===
 export type CameraMode = 'free' | 'follow';
 
@@ -210,6 +213,11 @@ export interface GameState {
   lastLevelUpMonth: number;
   lastAutoSaveDay: number;
 
+  // Game phase
+  gamePhase: GamePhase;
+  tutorialStep: number;
+  showHelpPanel: boolean;
+
   // UI state
   selectedTool: ToolType;
   selectedSubsidiaryType: SubsidiaryType | null;
@@ -236,6 +244,10 @@ export interface GameState {
   setCameraMode: (mode: CameraMode) => void;
   setFollowTrainId: (id: string | null) => void;
   toggleFinancePanel: () => void;
+  toggleHelpPanel: () => void;
+  setGamePhase: (phase: GamePhase) => void;
+  nextTutorialStep: () => void;
+  skipTutorial: () => void;
   saveGame: () => void;
   loadGame: () => void;
 }

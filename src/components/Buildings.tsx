@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
+import { useThree } from '@react-three/fiber';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
@@ -99,8 +100,11 @@ function flushTexturesIfNeeded(isNight: boolean) {
   lastNightState = isNight;
 }
 
+// LOD levels: 'full' = windows + details, 'simple' = colored box only
+type LODLevel = 'full' | 'simple';
+
 // Individual building mesh
-function BuildingMesh({ building, isNight }: { building: Building; isNight: boolean }) {
+function BuildingMesh({ building, isNight, lod }: { building: Building; isNight: boolean; lod: LODLevel }) {
   const map = useGameStore(s => s.map);
 
   const { position, color, buildingHeight, roofType } = useMemo(() => {
@@ -129,7 +133,7 @@ function BuildingMesh({ building, isNight }: { building: Building; isNight: bool
   const seed = building.x * 1000 + building.z;
   const bw = building.width * 0.85;
   const bd = building.depth * 0.85;
-  const hasWindows = building.height > 1 || building.type === 'commercial' || building.type === 'office';
+  const hasWindows = lod === 'full' && (building.height > 1 || building.type === 'commercial' || building.type === 'office');
 
   // Use shared window texture
   const windowTex = useMemo(() => {
@@ -142,6 +146,18 @@ function BuildingMesh({ building, isNight }: { building: Building; isNight: bool
     const r = seededRandom(seed + 200);
     return r > 0.5 ? '#8b4513' : '#a0522d'; // brown / sienna
   }, [seed]);
+
+  // Simple LOD: just a colored box
+  if (lod === 'simple') {
+    return (
+      <group position={position}>
+        <mesh position={[0, buildingHeight / 2, 0]} castShadow>
+          <boxGeometry args={[bw, buildingHeight, bd]} />
+          <meshStandardMaterial color={color} roughness={0.8} />
+        </mesh>
+      </group>
+    );
+  }
 
   return (
     <group position={position}>
@@ -313,18 +329,40 @@ function BuildingMesh({ building, isNight }: { building: Building; isNight: bool
 export function Buildings() {
   const buildings = useGameStore(s => s.buildings);
   const hour = useGameStore(s => s.gameTime.hour);
+  const { camera } = useThree();
 
   const isNight = hour < 6 || hour >= 18;
   flushTexturesIfNeeded(isNight);
 
   const buildingArray = useMemo(() => Array.from(buildings.values()), [buildings]);
 
-  if (buildingArray.length === 0) return null;
+  // Distance-based culling and LOD
+  const camTarget = useMemo(() => {
+    // Approximate camera target from camera position + direction
+    const dir = new THREE.Vector3();
+    camera.getWorldDirection(dir);
+    return new THREE.Vector3().copy(camera.position).add(dir.multiplyScalar(30));
+  }, [camera.position.x, camera.position.y, camera.position.z]);
+
+  const visibleBuildings = useMemo(() => {
+    const result: { building: Building; lod: LODLevel }[] = [];
+    for (const b of buildingArray) {
+      const w = gridToWorld(b.x, b.z);
+      const dx = w.x - camTarget.x;
+      const dz = w.z - camTarget.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist > 80) continue; // cull very far
+      result.push({ building: b, lod: dist < 30 ? 'full' : 'simple' });
+    }
+    return result;
+  }, [buildingArray, camTarget]);
+
+  if (visibleBuildings.length === 0) return null;
 
   return (
     <group>
-      {buildingArray.map(b => (
-        <BuildingMesh key={b.id} building={b} isNight={isNight} />
+      {visibleBuildings.map(({ building, lod }) => (
+        <BuildingMesh key={building.id} building={building} isNight={isNight} lod={lod} />
       ))}
     </group>
   );
