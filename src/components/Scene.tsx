@@ -208,7 +208,7 @@ function getDayNightParams(hour: number) {
     ambientColor = '#b8c8d8';
     sunIntensity = 1.0 + midday * 0.6;
     sunColor = midday > 0.5 ? '#fff5e6' : '#ffddaa';
-    fogColor = '#88bbee';
+    fogColor = '#9ec8e8';
     skyTurbidity = 3;
   } else if (isTwilight) {
     // Twilight
@@ -298,14 +298,28 @@ function DynamicSky() {
     [hour, minute]
   );
 
+  // Use both: Sky component for GPU-capable browsers + gradient sphere as fallback
   return (
-    <Sky
-      sunPosition={params.sunPosition}
-      turbidity={params.skyTurbidity}
-      rayleigh={params.isDaytime ? 2.5 : 0.1}
-      mieCoefficient={0.003}
-      mieDirectionalG={0.7}
-    />
+    <group>
+      <Sky
+        sunPosition={params.sunPosition}
+        turbidity={params.skyTurbidity}
+        rayleigh={params.isDaytime ? 3.0 : 0.1}
+        mieCoefficient={0.005}
+        mieDirectionalG={0.8}
+      />
+      {/* Gradient sky sphere as backup/enhancement */}
+      <mesh>
+        <sphereGeometry args={[400, 32, 16]} />
+        <meshBasicMaterial
+          color={params.isDaytime ? '#5b9bd5' : '#0a1628'}
+          side={THREE.BackSide}
+          transparent
+          opacity={0.3}
+          depthWrite={false}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -314,8 +328,9 @@ export function GameScene() {
     <Canvas
       shadows="soft"
       camera={{ position: [60, 50, 60], fov: 45, near: 0.1, far: 600 }}
-      style={{ width: '100%', height: '100%' }}
+      style={{ width: '100%', height: '100%', background: 'linear-gradient(180deg, #4a8fd4 0%, #87ceeb 40%, #b8dff0 100%)' }}
       gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
+      onCreated={({ gl }) => { gl.setClearColor('#87ceeb', 1); }}
     >
       <DynamicFog />
       <DynamicSky />
