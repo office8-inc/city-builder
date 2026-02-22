@@ -2,8 +2,7 @@ import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
-import { EffectComposer, Bloom, SMAA, ToneMapping, Vignette } from '@react-three/postprocessing';
-import { ToneMappingMode } from 'postprocessing';
+import { EffectComposer, Bloom, SMAA, Vignette } from '@react-three/postprocessing';
 import { Terrain } from './Terrain.tsx';
 import { Tracks } from './Tracks.tsx';
 import { Stations } from './Stations.tsx';
@@ -303,7 +302,7 @@ function DynamicSky() {
     <Sky
       sunPosition={params.sunPosition}
       turbidity={params.skyTurbidity}
-      rayleigh={params.isDaytime ? 2.0 : 0.1}
+      rayleigh={params.isDaytime ? 1.0 : 0.1}
       mieCoefficient={0.005}
       mieDirectionalG={0.8}
     />
@@ -316,7 +315,7 @@ export function GameScene() {
       shadows="soft"
       camera={{ position: [60, 50, 60], fov: 45, near: 0.1, far: 600 }}
       style={{ width: '100%', height: '100%' }}
-      gl={{ antialias: true, toneMapping: THREE.NoToneMapping }}
+      gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
     >
       <DynamicFog />
       <DynamicSky />
@@ -333,9 +332,8 @@ export function GameScene() {
       <SimulationLoop />
       <KeyboardControls />
       <EffectComposer multisampling={0}>
-        <ToneMapping mode={ToneMappingMode.AGX} />
-        <Bloom luminanceThreshold={0.7} luminanceSmoothing={0.4} intensity={0.4} />
-        <Vignette eskil={false} offset={0.2} darkness={0.4} />
+        <Bloom luminanceThreshold={0.8} luminanceSmoothing={0.4} intensity={0.3} />
+        <Vignette eskil={false} offset={0.15} darkness={0.3} />
         <SMAA />
       </EffectComposer>
     </Canvas>
