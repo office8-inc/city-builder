@@ -3,6 +3,7 @@ import type {
   GameState,
   ToolType,
   GameSpeed,
+  CameraMode,
   TrackSegment,
   Station,
   Train,
@@ -101,6 +102,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   selectedTool: 'none',
   hoveredTile: null,
   notifications: [],
+
+  // Camera
+  cameraMode: 'free',
+  followTrainId: null,
 
   // === Actions ===
 
@@ -459,4 +464,17 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     get().addNotification(`${train.name}を配置 (${formatMoney(cost)})`);
   },
+
+  setCameraMode: (mode: CameraMode) => {
+    if (mode === 'free') {
+      set({ cameraMode: 'free', followTrainId: null });
+    } else {
+      // Auto-select first train if none selected
+      const state = get();
+      const firstTrainId = state.trains.keys().next().value ?? null;
+      set({ cameraMode: 'follow', followTrainId: firstTrainId ?? null });
+    }
+  },
+
+  setFollowTrainId: (id: string | null) => set({ followTrainId: id }),
 }));

@@ -1,8 +1,38 @@
 import { useMemo } from 'react';
+import * as THREE from 'three';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import type { TrackSegment } from '../game/types.ts';
+
+// Shared geometries for instancing-friendly rendering
+const ballastGeo = new THREE.BoxGeometry(1.05, 0.05, 0.5);
+const railGeo = new THREE.BoxGeometry(1.05, 0.025, 0.025);
+const sleeperGeo = new THREE.BoxGeometry(0.08, 0.025, 0.38);
+
+// Shared materials
+const ballastMat = new THREE.MeshStandardMaterial({
+  color: '#7a7060',
+  roughness: 0.95,
+  metalness: 0.0,
+});
+const railMat = new THREE.MeshStandardMaterial({
+  color: '#707878',
+  roughness: 0.25,
+  metalness: 0.7,
+});
+const sleeperMat = new THREE.MeshStandardMaterial({
+  color: '#5a4030',
+  roughness: 0.9,
+  metalness: 0.0,
+});
+
+// Number of sleepers per segment
+const SLEEPER_COUNT = 7;
+const sleeperPositions: number[] = [];
+for (let i = 0; i < SLEEPER_COUNT; i++) {
+  sleeperPositions.push(-0.45 + (i / (SLEEPER_COUNT - 1)) * 0.9);
+}
 
 function TrackSegmentMesh({ segment }: { segment: TrackSegment }) {
   const map = useGameStore(s => s.map);
@@ -25,21 +55,35 @@ function TrackSegmentMesh({ segment }: { segment: TrackSegment }) {
 
   return (
     <group position={position} rotation={[0, rotY, 0]}>
-      {/* Ballast / roadbed */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[1.0, 0.06, 0.4]} />
-        <meshStandardMaterial color="#555555" roughness={0.9} />
-      </mesh>
+      {/* Ballast / gravel bed - slightly raised */}
+      <mesh geometry={ballastGeo} material={ballastMat} receiveShadow />
+
+      {/* Sleepers / ties */}
+      {sleeperPositions.map((xPos, i) => (
+        <mesh
+          key={i}
+          geometry={sleeperGeo}
+          material={sleeperMat}
+          position={[xPos, 0.035, 0]}
+          castShadow
+          receiveShadow
+        />
+      ))}
+
       {/* Rail 1 */}
-      <mesh position={[0, 0.04, 0.12]} castShadow>
-        <boxGeometry args={[1.0, 0.03, 0.03]} />
-        <meshStandardMaterial color="#888888" roughness={0.3} metalness={0.6} />
-      </mesh>
+      <mesh
+        geometry={railGeo}
+        material={railMat}
+        position={[0, 0.055, 0.12]}
+        castShadow
+      />
       {/* Rail 2 */}
-      <mesh position={[0, 0.04, -0.12]} castShadow>
-        <boxGeometry args={[1.0, 0.03, 0.03]} />
-        <meshStandardMaterial color="#888888" roughness={0.3} metalness={0.6} />
-      </mesh>
+      <mesh
+        geometry={railGeo}
+        material={railMat}
+        position={[0, 0.055, -0.12]}
+        castShadow
+      />
     </group>
   );
 }

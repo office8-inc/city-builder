@@ -8,6 +8,31 @@ import { MiniMap } from './MiniMap.tsx';
 import { Notifications } from './Notifications.tsx';
 import { BuildingInfo } from './BuildingInfo.tsx';
 
+function CabViewButton() {
+  const cameraMode = useGameStore(s => s.cameraMode);
+  const setCameraMode = useGameStore(s => s.setCameraMode);
+  const trains = useGameStore(s => s.trains);
+  const followTrainId = useGameStore(s => s.followTrainId);
+
+  const isFollow = cameraMode === 'follow';
+  const trainName = followTrainId ? trains.get(followTrainId)?.name : null;
+
+  return (
+    <button
+      onClick={() => setCameraMode(isFollow ? 'free' : 'follow')}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+        isFollow
+          ? 'bg-amber-500/80 text-white shadow-lg shadow-amber-500/30'
+          : 'bg-white/10 text-white/80 hover:bg-white/20'
+      }`}
+      title={isFollow ? 'フリーカメラに戻る (Esc)' : '車窓モード (列車を追尾)'}
+    >
+      <span>🚃</span>
+      <span>{isFollow ? `車窓: ${trainName || '---'}` : '車窓モード'}</span>
+    </button>
+  );
+}
+
 function TopBar() {
   const finance = useGameStore(s => s.finance);
   const population = useGameStore(s => s.population);
@@ -32,6 +57,7 @@ function TopBar() {
         <span className="flex items-center gap-1.5">
           👥 {population.toLocaleString()}人
         </span>
+        <CabViewButton />
       </div>
       <TimeControls />
     </div>

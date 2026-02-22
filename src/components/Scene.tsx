@@ -122,6 +122,24 @@ function KeyboardControls() {
           e.preventDefault();
           setSpeed(speed === 0 ? 1 : 0);
           break;
+        case 'Escape': {
+          const state = useGameStore.getState();
+          if (state.cameraMode === 'follow') {
+            state.setCameraMode('free');
+          }
+          break;
+        }
+        case 'Tab': {
+          e.preventDefault();
+          const state = useGameStore.getState();
+          if (state.cameraMode === 'follow' && state.trains.size > 0) {
+            const ids = Array.from(state.trains.keys());
+            const currentIdx = state.followTrainId ? ids.indexOf(state.followTrainId) : -1;
+            const nextIdx = (currentIdx + 1) % ids.length;
+            state.setFollowTrainId(ids[nextIdx]);
+          }
+          break;
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);

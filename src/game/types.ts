@@ -150,6 +150,9 @@ export interface ExpenseBreakdown {
   interestPayment: number;
 }
 
+// === Camera Mode ===
+export type CameraMode = 'free' | 'follow';
+
 // === Tool Type ===
 export type ToolType =
   | 'none'
@@ -198,6 +201,10 @@ export interface GameState {
   hoveredTile: { x: number; z: number } | null;
   notifications: GameNotification[];
 
+  // Camera
+  cameraMode: CameraMode;
+  followTrainId: string | null;
+
   // Actions
   setSpeed: (speed: GameSpeed) => void;
   setSelectedTool: (tool: ToolType) => void;
@@ -208,4 +215,6 @@ export interface GameState {
   placeTrack: (startX: number, startZ: number, endX: number, endZ: number) => void;
   buildStation: (x: number, z: number) => void;
   placeTrain: (stationId: string) => void;
+  setCameraMode: (mode: CameraMode) => void;
+  setFollowTrainId: (id: string | null) => void;
 }
