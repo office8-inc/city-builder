@@ -186,13 +186,17 @@ function ForestInstances() {
   const trunkMesh = useMemo(() => {
     if (trunkData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
-      new THREE.CylinderGeometry(1, 1, 1, 4),
+      new THREE.CylinderGeometry(0.8, 1.2, 1, 6),
       new THREE.MeshStandardMaterial({ color: '#5a3a1a', roughness: 0.9 }),
       trunkData.length,
     );
     const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
     trunkData.forEach((d, i) => {
-      matrix.compose(d.position, new THREE.Quaternion(), d.scale);
+      // ランダムに少し傾ける
+      const tilt = ((d.position.x * 127 + d.position.z * 311) % 100) / 100 * 0.08 - 0.04;
+      q.setFromEuler(new THREE.Euler(tilt, 0, tilt * 0.7));
+      matrix.compose(d.position, q, d.scale);
       mesh.setMatrixAt(i, matrix);
     });
     mesh.instanceMatrix.needsUpdate = true;
@@ -204,13 +208,17 @@ function ForestInstances() {
   const canopyMesh = useMemo(() => {
     if (canopyData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
-      new THREE.SphereGeometry(1, 6, 4),
-      new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.75 }),
+      new THREE.IcosahedronGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ color: canopyColor, roughness: 0.75, flatShading: true }),
       canopyData.length,
     );
     const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
     canopyData.forEach((d, i) => {
-      matrix.compose(d.position, new THREE.Quaternion(), d.scale);
+      // ランダム回転で画一感を消す
+      const rot = ((d.position.x * 431 + d.position.z * 173) % 100) / 100 * Math.PI * 2;
+      q.setFromEuler(new THREE.Euler(0, rot, 0));
+      matrix.compose(d.position, q, d.scale);
       mesh.setMatrixAt(i, matrix);
     });
     mesh.instanceMatrix.needsUpdate = true;
@@ -277,7 +285,7 @@ function UrbanTrees() {
   const trunkMesh = useMemo(() => {
     if (trunkData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
-      new THREE.CylinderGeometry(1, 1, 1, 4),
+      new THREE.CylinderGeometry(0.7, 1.1, 1, 6),
       new THREE.MeshStandardMaterial({ color: '#5a3a1a', roughness: 0.9 }),
       trunkData.length,
     );
@@ -294,13 +302,16 @@ function UrbanTrees() {
   const canopyMesh = useMemo(() => {
     if (canopyData.length === 0) return null;
     const mesh = new THREE.InstancedMesh(
-      new THREE.ConeGeometry(1, 1, 6),
-      new THREE.MeshStandardMaterial({ color: '#358a35', roughness: 0.75 }),
+      new THREE.IcosahedronGeometry(1, 1),
+      new THREE.MeshStandardMaterial({ color: '#358a35', roughness: 0.75, flatShading: true }),
       canopyData.length,
     );
     const matrix = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
     canopyData.forEach((d, i) => {
-      matrix.compose(d.position, new THREE.Quaternion(), d.scale);
+      const rot = ((d.position.x * 271 + d.position.z * 389) % 100) / 100 * Math.PI * 2;
+      q.setFromEuler(new THREE.Euler(0, rot, 0));
+      matrix.compose(d.position, q, d.scale);
       mesh.setMatrixAt(i, matrix);
     });
     mesh.instanceMatrix.needsUpdate = true;

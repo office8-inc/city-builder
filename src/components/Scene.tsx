@@ -1,8 +1,8 @@
 import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
-import { Sky } from '@react-three/drei';
+import { Sky, ContactShadows } from '@react-three/drei';
 import * as THREE from 'three';
-import { EffectComposer, Bloom, SMAA, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, SMAA, Vignette, N8AO, TiltShift2, BrightnessContrast, HueSaturation } from '@react-three/postprocessing';
 import { Terrain } from './Terrain.tsx';
 import { Tracks } from './Tracks.tsx';
 import { Stations } from './Stations.tsx';
@@ -371,6 +371,15 @@ export function GameScene() {
       <DynamicLights />
       <Camera />
       <Terrain />
+      <ContactShadows
+        position={[0, 0.01, 0]}
+        opacity={0.35}
+        scale={GRID_SIZE}
+        blur={2.5}
+        far={4}
+        resolution={512}
+        color="#1a2030"
+      />
       <Roads />
       <Tracks />
       <Stations />
@@ -383,8 +392,22 @@ export function GameScene() {
       <SimulationLoop />
       <KeyboardControls />
       <EffectComposer multisampling={0}>
-        <Bloom luminanceThreshold={0.8} luminanceSmoothing={0.4} intensity={0.3} />
-        <Vignette eskil={false} offset={0.15} darkness={0.3} />
+        <N8AO
+          aoRadius={2.0}
+          intensity={1.5}
+          distanceFalloff={0.5}
+          quality="medium"
+        />
+        <TiltShift2
+          blur={0.07}
+          taper={0.8}
+          start={[0, 0.6]}
+          end={[0, 0.4]}
+        />
+        <BrightnessContrast brightness={0.02} contrast={0.12} />
+        <HueSaturation saturation={0.15} />
+        <Bloom luminanceThreshold={0.75} luminanceSmoothing={0.3} intensity={0.4} />
+        <Vignette eskil={false} offset={0.1} darkness={0.45} />
         <SMAA />
       </EffectComposer>
     </Canvas>
