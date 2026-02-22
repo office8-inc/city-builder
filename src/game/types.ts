@@ -150,6 +150,14 @@ export interface ExpenseBreakdown {
   interestPayment: number;
 }
 
+// === Quarterly Record (for bar chart) ===
+export interface QuarterlyRecord {
+  year: number;
+  quarter: number;
+  income: number;
+  expenses: number;
+}
+
 // === Camera Mode ===
 export type CameraMode = 'free' | 'follow';
 
@@ -162,6 +170,10 @@ export type ToolType =
   | 'station_build'
   | 'train_place'
   | 'subsidiary_build'
+  | 'subsidiary_factory'
+  | 'subsidiary_hotel'
+  | 'subsidiary_department_store'
+  | 'subsidiary_power_plant'
   | 'bulldoze';
 
 // === Notification ===
@@ -187,6 +199,7 @@ export interface GameState {
   // Economy
   finance: Finance;
   population: number;
+  quarterlyHistory: QuarterlyRecord[];
 
   // Time
   gameTime: GameTime;
@@ -195,11 +208,14 @@ export interface GameState {
   // Development tracking
   lastDevelopmentDay: number;
   lastLevelUpMonth: number;
+  lastAutoSaveDay: number;
 
   // UI state
   selectedTool: ToolType;
+  selectedSubsidiaryType: SubsidiaryType | null;
   hoveredTile: { x: number; z: number } | null;
   notifications: GameNotification[];
+  showFinancePanel: boolean;
 
   // Camera
   cameraMode: CameraMode;
@@ -208,6 +224,7 @@ export interface GameState {
   // Actions
   setSpeed: (speed: GameSpeed) => void;
   setSelectedTool: (tool: ToolType) => void;
+  setSelectedSubsidiaryType: (type: SubsidiaryType | null) => void;
   setHoveredTile: (tile: { x: number; z: number } | null) => void;
   tick: () => void;
   addNotification: (message: string) => void;
@@ -215,6 +232,10 @@ export interface GameState {
   placeTrack: (startX: number, startZ: number, endX: number, endZ: number) => void;
   buildStation: (x: number, z: number) => void;
   placeTrain: (stationId: string) => void;
+  buildSubsidiary: (x: number, z: number) => void;
   setCameraMode: (mode: CameraMode) => void;
   setFollowTrainId: (id: string | null) => void;
+  toggleFinancePanel: () => void;
+  saveGame: () => void;
+  loadGame: () => void;
 }

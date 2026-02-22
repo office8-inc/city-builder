@@ -9,6 +9,7 @@ import { Tracks } from './Tracks.tsx';
 import { Stations } from './Stations.tsx';
 import { Trains } from './Trains.tsx';
 import { Buildings } from './Buildings.tsx';
+import { Subsidiaries } from './Subsidiaries.tsx';
 import { GridOverlay } from './GridHelper.tsx';
 import { Camera } from './Camera.tsx';
 import { useGameStore } from '../game/store.ts';
@@ -39,6 +40,7 @@ function InteractionPlane() {
   const placeTrack = useGameStore(s => s.placeTrack);
   const buildStation = useGameStore(s => s.buildStation);
   const placeTrain = useGameStore(s => s.placeTrain);
+  const buildSubsidiary = useGameStore(s => s.buildSubsidiary);
 
   const dragStartRef = useRef<{ x: number; z: number } | null>(null);
 
@@ -84,8 +86,10 @@ function InteractionPlane() {
       if (tile?.stationId) {
         placeTrain(tile.stationId);
       }
+    } else if (selectedTool === 'subsidiary_build') {
+      buildSubsidiary(gridPos.x, gridPos.z);
     }
-  }, [selectedTool, placeTrack, buildStation, placeTrain]);
+  }, [selectedTool, placeTrack, buildStation, placeTrain, buildSubsidiary]);
 
   const handlePointerLeave = useCallback(() => {
     setHoveredTile(null);
@@ -122,9 +126,15 @@ function KeyboardControls() {
           e.preventDefault();
           setSpeed(speed === 0 ? 1 : 0);
           break;
+        case 'f':
+        case 'F':
+          useGameStore.getState().toggleFinancePanel();
+          break;
         case 'Escape': {
           const state = useGameStore.getState();
-          if (state.cameraMode === 'follow') {
+          if (state.showFinancePanel) {
+            state.toggleFinancePanel();
+          } else if (state.cameraMode === 'follow') {
             state.setCameraMode('free');
           }
           break;
@@ -292,6 +302,7 @@ export function GameScene() {
       <Stations />
       <Trains />
       <Buildings />
+      <Subsidiaries />
       <GridOverlay />
       <InteractionPlane />
       <SimulationLoop />

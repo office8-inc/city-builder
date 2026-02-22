@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -18,6 +18,20 @@ function FreeCamera() {
       controlsRef.current.mouseButtons = { LEFT: -1, MIDDLE: 2, RIGHT: 0 };
     }
   });
+
+  // Listen for minimap click events to move camera
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { x, z } = (e as CustomEvent).detail;
+      if (controlsRef.current) {
+        const w = gridToWorld(x, z);
+        controlsRef.current.target.set(w.x, 0, w.z);
+        controlsRef.current.update();
+      }
+    };
+    window.addEventListener('minimap-click', handler);
+    return () => window.removeEventListener('minimap-click', handler);
+  }, []);
 
   return (
     <OrbitControls
