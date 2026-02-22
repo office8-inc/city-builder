@@ -208,7 +208,7 @@ function getDayNightParams(hour: number) {
     ambientColor = '#b8c8d8';
     sunIntensity = 1.0 + midday * 0.6;
     sunColor = midday > 0.5 ? '#fff5e6' : '#ffddaa';
-    fogColor = '#a0c8e8';
+    fogColor = '#88bbee';
     skyTurbidity = 3;
   } else if (isTwilight) {
     // Twilight
@@ -287,7 +287,7 @@ function DynamicFog() {
   const hour = useGameStore(s => s.gameTime.hour);
   const params = useMemo(() => getDayNightParams(hour), [hour]);
 
-  return <fog attach="fog" args={[params.fogColor, 60, 160]} />;
+  return <fog attach="fog" args={[params.fogColor, 100, 280]} />;
 }
 
 function DynamicSky() {
@@ -302,9 +302,9 @@ function DynamicSky() {
     <Sky
       sunPosition={params.sunPosition}
       turbidity={params.skyTurbidity}
-      rayleigh={params.isDaytime ? 1.0 : 0.1}
-      mieCoefficient={0.005}
-      mieDirectionalG={0.8}
+      rayleigh={params.isDaytime ? 2.5 : 0.1}
+      mieCoefficient={0.003}
+      mieDirectionalG={0.7}
     />
   );
 }

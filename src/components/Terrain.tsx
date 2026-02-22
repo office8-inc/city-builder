@@ -63,8 +63,8 @@ function WaterPlane() {
     return new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uColor1: { value: new THREE.Color('#1a5fb4') },
-        uColor2: { value: new THREE.Color('#0d47a1') },
+        uColor1: { value: new THREE.Color('#1a7fcc') },
+        uColor2: { value: new THREE.Color('#0e5fa8') },
       },
       vertexShader: `
         uniform float uTime;

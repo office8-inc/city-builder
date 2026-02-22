@@ -198,9 +198,9 @@ export function getTerrainColor(terrain: TerrainType, height: number, tileX?: nu
         ];
       }
       return [
-        0.28 + t * 0.06 + (noise - 0.5) * 0.08 - valleyBoost * 0.5,
-        0.58 - t * 0.04 + (noise - 0.5) * 0.06 + valleyBoost,
-        0.18 + t * 0.02 + (noise - 0.5) * 0.04,
+        0.24 + t * 0.06 + (noise - 0.5) * 0.08 - valleyBoost * 0.5,
+        0.62 - t * 0.04 + (noise - 0.5) * 0.06 + valleyBoost,
+        0.16 + t * 0.02 + (noise - 0.5) * 0.04,
       ];
     }
   }
