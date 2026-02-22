@@ -189,6 +189,10 @@ export interface GameState {
   gameTime: GameTime;
   speed: GameSpeed;
 
+  // Development tracking
+  lastDevelopmentDay: number;
+  lastLevelUpMonth: number;
+
   // UI state
   selectedTool: ToolType;
   hoveredTile: { x: number; z: number } | null;

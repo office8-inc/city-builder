@@ -24,6 +24,7 @@ import {
 import { generateTerrain } from './terrain.ts';
 import { advanceTime } from './simulation.ts';
 import { advanceTrainPosition } from './trackUtils.ts';
+import { developCity, levelUpBuildings, calculatePopulation } from './cityDevelopment.ts';
 
 let nextNotificationId = 1;
 let nextEntityId = 1;
@@ -92,6 +93,10 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameTime: { ...initialTime },
   speed: 1,
 
+  // Development tracking
+  lastDevelopmentDay: 0,
+  lastLevelUpMonth: 0,
+
   // UI
   selectedTool: 'none',
   hoveredTile: null,
@@ -126,7 +131,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     if (state.speed === 0) return;
 
     const minutesPerTick = 10;
-    const newTime = advanceTime(state.gameTime, minutesPerTick);
+    const prevTime = state.gameTime;
+    const newTime = advanceTime(prevTime, minutesPerTick);
 
     // Move trains (mutate in place — visual reads via getState() in useFrame)
     for (const train of state.trains.values()) {
@@ -137,18 +143,96 @@ export const useGameStore = create<GameState>((set, get) => ({
       train.direction = update.direction;
     }
 
-    // Update passenger counts once per day at 6:00
-    if (newTime.hour === 6 && newTime.minute === 0) {
-      const stationCount = state.stations.size;
+    const updates: Partial<GameState> = { gameTime: newTime };
+
+    // Daily updates at hour 0
+    const dayId = newTime.year * 10000 + newTime.month * 100 + newTime.day;
+    if (newTime.hour === 0 && newTime.minute === 0 && dayId !== state.lastDevelopmentDay) {
+      updates.lastDevelopmentDay = dayId;
+
+      // Update station activity based on trains
       for (const station of state.stations.values()) {
-        station.dailyPassengers = stationCount * 100;
+        // Activity increases when trains exist in the network
+        const trainCount = state.trains.size;
+        const stationCount = state.stations.size;
+        station.activityLevel = Math.min(100, trainCount * 15 + stationCount * 5);
+        station.dailyPassengers = stationCount * 100 + trainCount * 200;
       }
+
       for (const train of state.trains.values()) {
-        train.passengers = Math.min(train.capacity, stationCount * 50);
+        train.passengers = Math.min(train.capacity, state.stations.size * 50);
+      }
+
+      // Auto city development
+      if (state.stations.size > 0) {
+        const newBuildings = developCity(state);
+        if (newBuildings.length > 0) {
+          const updatedBuildings = new Map(state.buildings);
+          for (const b of newBuildings) {
+            updatedBuildings.set(b.id, b);
+          }
+          updates.buildings = updatedBuildings;
+        }
+      }
+
+      // Daily economy: rail fare income
+      const dailyFare = state.trains.size * state.stations.size * 200 * 200;
+      if (dailyFare > 0) {
+        const finance = { ...state.finance };
+        finance.cash += dailyFare;
+        finance.quarterlyIncome = {
+          ...finance.quarterlyIncome,
+          railFare: finance.quarterlyIncome.railFare + dailyFare,
+        };
+        updates.finance = finance;
       }
     }
 
-    set({ gameTime: newTime });
+    // Monthly updates (day 1, hour 0)
+    const monthId = newTime.year * 100 + newTime.month;
+    if (newTime.day === 1 && newTime.hour === 0 && newTime.minute === 0 && monthId !== state.lastLevelUpMonth) {
+      updates.lastLevelUpMonth = monthId;
+
+      // Level up buildings
+      levelUpBuildings(state);
+
+      // Monthly tax income: population * 100 yen
+      const finance = updates.finance ? { ...updates.finance } : { ...state.finance };
+      const buildings = updates.buildings || state.buildings;
+      const pop = calculatePopulation(buildings);
+      const taxIncome = pop * 100;
+      finance.cash += taxIncome;
+      finance.quarterlyIncome = {
+        ...finance.quarterlyIncome,
+        other: finance.quarterlyIncome.other + taxIncome,
+      };
+
+      // Monthly expenses: track & train maintenance
+      const trackMaint = state.tracks.size * 100_000;
+      const trainMaint = state.trains.size * TRAIN_TYPES.local.maintenance;
+      finance.cash -= trackMaint + trainMaint;
+      finance.quarterlyExpenses = {
+        ...finance.quarterlyExpenses,
+        trackMaintenance: finance.quarterlyExpenses.trackMaintenance + trackMaint,
+        trainMaintenance: finance.quarterlyExpenses.trainMaintenance + trainMaint,
+      };
+
+      updates.finance = finance;
+      updates.population = pop;
+
+      // Trigger new buildings reference so React re-renders
+      if (!updates.buildings) {
+        updates.buildings = new Map(state.buildings);
+      }
+    }
+
+    // Update population from buildings each tick (lightweight)
+    if (!updates.population) {
+      const buildings = updates.buildings || state.buildings;
+      updates.population = calculatePopulation(buildings);
+    }
+
+    set(updates as GameState);
   },
 
   placeTrack: (startX: number, startZ: number, endX: number, endZ: number) => {

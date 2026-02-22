@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
 import { Sky } from '@react-three/drei';
 import * as THREE from 'three';
@@ -8,6 +8,7 @@ import { Terrain } from './Terrain.tsx';
 import { Tracks } from './Tracks.tsx';
 import { Stations } from './Stations.tsx';
 import { Trains } from './Trains.tsx';
+import { Buildings } from './Buildings.tsx';
 import { GridOverlay } from './GridHelper.tsx';
 import { Camera } from './Camera.tsx';
 import { useGameStore } from '../game/store.ts';
@@ -130,14 +131,79 @@ function KeyboardControls() {
   return null;
 }
 
-function Lights() {
+// Day/night lighting calculations
+function getDayNightParams(hour: number) {
+  // Sun angle: rises at 6, sets at 18
+  const sunAngle = ((hour - 6) / 12) * Math.PI; // 0 at sunrise, PI at sunset
+  const sunX = Math.cos(sunAngle) * 100;
+  const sunY = Math.sin(sunAngle) * 100;
+  const sunZ = 80;
+
+  const isDaytime = hour >= 6 && hour < 18;
+  const isTwilight = (hour >= 5 && hour < 6) || (hour >= 18 && hour < 19);
+
+  let ambientIntensity: number;
+  let ambientColor: string;
+  let sunIntensity: number;
+  let sunColor: string;
+  let fogColor: string;
+  let skyTurbidity: number;
+
+  if (isDaytime) {
+    // Daytime
+    const midday = 1 - Math.abs(hour - 12) / 6; // 0 at dawn/dusk, 1 at noon
+    ambientIntensity = 0.25 + midday * 0.2;
+    ambientColor = '#8eaacc';
+    sunIntensity = 0.8 + midday * 0.5;
+    sunColor = midday > 0.5 ? '#fff5e6' : '#ffddaa';
+    fogColor = '#b4d7f0';
+    skyTurbidity = 3;
+  } else if (isTwilight) {
+    // Twilight
+    ambientIntensity = 0.15;
+    ambientColor = '#667799';
+    sunIntensity = 0.3;
+    sunColor = '#ff9944';
+    fogColor = '#7799aa';
+    skyTurbidity = 8;
+  } else {
+    // Night
+    ambientIntensity = 0.08;
+    ambientColor = '#223355';
+    sunIntensity = 0.05;
+    sunColor = '#334466';
+    fogColor = '#112233';
+    skyTurbidity = 10;
+  }
+
+  return {
+    sunPosition: [sunX, Math.max(sunY, -30), sunZ] as [number, number, number],
+    ambientIntensity,
+    ambientColor,
+    sunIntensity,
+    sunColor,
+    fogColor,
+    skyTurbidity,
+    isDaytime,
+  };
+}
+
+function DynamicLights() {
+  const hour = useGameStore(s => s.gameTime.hour);
+  const minute = useGameStore(s => s.gameTime.minute);
+
+  const params = useMemo(
+    () => getDayNightParams(hour + minute / 60),
+    [hour, minute]
+  );
+
   return (
     <>
-      <ambientLight intensity={0.4} color="#8eaacc" />
+      <ambientLight intensity={params.ambientIntensity} color={params.ambientColor} />
       <directionalLight
-        position={[80, 100, 60]}
-        intensity={1.2}
-        color="#fff5e6"
+        position={params.sunPosition}
+        intensity={params.sunIntensity}
+        color={params.sunColor}
         castShadow
         shadow-mapSize-width={4096}
         shadow-mapSize-height={4096}
@@ -149,9 +215,45 @@ function Lights() {
         shadow-camera-far={300}
         shadow-bias={-0.001}
       />
-      <directionalLight position={[-40, 50, -30]} intensity={0.25} color="#b4c8e8" />
-      <hemisphereLight args={['#87ceeb', '#5a9e3e', 0.3]} />
+      <directionalLight
+        position={[-40, 50, -30]}
+        intensity={params.isDaytime ? 0.25 : 0.05}
+        color={params.isDaytime ? '#b4c8e8' : '#223344'}
+      />
+      <hemisphereLight
+        args={[
+          params.isDaytime ? '#87ceeb' : '#112244',
+          params.isDaytime ? '#5a9e3e' : '#1a2a1a',
+          params.isDaytime ? 0.3 : 0.1,
+        ]}
+      />
     </>
+  );
+}
+
+function DynamicFog() {
+  const hour = useGameStore(s => s.gameTime.hour);
+  const params = useMemo(() => getDayNightParams(hour), [hour]);
+
+  return <fog attach="fog" args={[params.fogColor, 80, 200]} />;
+}
+
+function DynamicSky() {
+  const hour = useGameStore(s => s.gameTime.hour);
+  const minute = useGameStore(s => s.gameTime.minute);
+  const params = useMemo(
+    () => getDayNightParams(hour + minute / 60),
+    [hour, minute]
+  );
+
+  return (
+    <Sky
+      sunPosition={params.sunPosition}
+      turbidity={params.skyTurbidity}
+      rayleigh={params.isDaytime ? 0.5 : 0.1}
+      mieCoefficient={0.005}
+      mieDirectionalG={0.8}
+    />
   );
 }
 
@@ -163,20 +265,15 @@ export function GameScene() {
       style={{ width: '100%', height: '100%' }}
       gl={{ antialias: true, toneMapping: THREE.NoToneMapping }}
     >
-      <fog attach="fog" args={['#b4d7f0', 80, 200]} />
-      <Sky
-        sunPosition={[100, 60, 80]}
-        turbidity={3}
-        rayleigh={0.5}
-        mieCoefficient={0.005}
-        mieDirectionalG={0.8}
-      />
-      <Lights />
+      <DynamicFog />
+      <DynamicSky />
+      <DynamicLights />
       <Camera />
       <Terrain />
       <Tracks />
       <Stations />
       <Trains />
+      <Buildings />
       <GridOverlay />
       <InteractionPlane />
       <SimulationLoop />
