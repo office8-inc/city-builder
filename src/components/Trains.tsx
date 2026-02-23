@@ -5,32 +5,40 @@ import { useGLTF, Clone } from '@react-three/drei';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
-// Train vehicle types are defined by keys in TRAIN_MODELS
 
 const BASE = import.meta.env.BASE_URL;
+const T = (name: string) => BASE + `models/kenney-trains/${name}.glb`;
 
-// Train model mapping (monorail models)
-const TRAIN_MODELS: Record<string, { front: string; car: string; rear: string } | null> = {
-  local:      { front: BASE + 'models/kenney-monorail/monorail_trainFront.glb', car: BASE + 'models/kenney-monorail/monorail_trainPassenger.glb', rear: BASE + 'models/kenney-monorail/monorail_trainEnd.glb' },
-  suburban:   { front: BASE + 'models/kenney-monorail/monorail_trainFront.glb', car: BASE + 'models/kenney-monorail/monorail_trainPassenger.glb', rear: BASE + 'models/kenney-monorail/monorail_trainEnd.glb' },
-  express:    { front: BASE + 'models/kenney-monorail/monorail_trainFront.glb', car: BASE + 'models/kenney-monorail/monorail_trainPassenger.glb', rear: BASE + 'models/kenney-monorail/monorail_trainEnd.glb' },
-  shinkansen: { front: BASE + 'models/kenney-monorail/monorail_trainFront.glb', car: BASE + 'models/kenney-monorail/monorail_trainPassenger.glb', rear: BASE + 'models/kenney-monorail/monorail_trainEnd.glb' },
-  steam:      null,
-  freight:    { front: BASE + 'models/kenney-monorail/monorail_trainFront.glb', car: BASE + 'models/kenney-monorail/monorail_trainCargo.glb', rear: BASE + 'models/kenney-monorail/monorail_trainFlat.glb' },
-  diesel:     { front: BASE + 'models/kenney-monorail/monorail_trainBox.glb', car: BASE + 'models/kenney-monorail/monorail_trainPassenger.glb', rear: BASE + 'models/kenney-monorail/monorail_trainEnd.glb' },
+// Kenney Train Kit: a=front, b=middle, c=rear
+const TRAIN_MODELS: Record<string, { front: string; car: string; rear: string; freight?: string[] } | null> = {
+  local:      { front: T('train-electric-city-a'), car: T('train-electric-city-b'), rear: T('train-electric-city-c') },
+  suburban:   { front: T('train-electric-square-a'), car: T('train-electric-square-b'), rear: T('train-electric-square-c') },
+  express:    { front: T('train-electric-double-a'), car: T('train-electric-double-b'), rear: T('train-electric-double-c') },
+  diesel:     { front: T('train-diesel-a'), car: T('train-diesel-b'), rear: T('train-diesel-c') },
+  shinkansen: { front: T('train-electric-bullet-a'), car: T('train-electric-bullet-b'), rear: T('train-electric-bullet-c') },
+  steam:      { front: T('train-locomotive-a'), car: T('train-locomotive-passenger-b'), rear: T('train-locomotive-c') },
+  freight:    {
+    front: T('train-diesel-box-a'),
+    car: T('train-carriage-box'),
+    rear: T('train-diesel-box-c'),
+    freight: [T('train-carriage-coal'), T('train-carriage-container-blue'), T('train-carriage-container-red'), T('train-carriage-tank'), T('train-carriage-flatbed-wood')],
+  },
 };
 
-// Preload all train models
-const trainModelPaths = new Set<string>();
+// Preload all
+const allPaths = new Set<string>();
 for (const m of Object.values(TRAIN_MODELS)) {
-  if (m) { trainModelPaths.add(m.front); trainModelPaths.add(m.car); trainModelPaths.add(m.rear); }
+  if (!m) continue;
+  allPaths.add(m.front);
+  allPaths.add(m.car);
+  allPaths.add(m.rear);
+  m.freight?.forEach(p => allPaths.add(p));
 }
-trainModelPaths.forEach(p => useGLTF.preload(p));
+allPaths.forEach(p => useGLTF.preload(p));
 
-// Single GLB train car
 function GLBTrainCar({ modelPath }: { modelPath: string }) {
   const { scene } = useGLTF(modelPath);
-  return <Clone object={scene} scale={0.1} castShadow />;
+  return <Clone object={scene} scale={0.12} castShadow />;
 }
 
 function TrainMesh({ trainId }: { trainId: string }) {
@@ -38,6 +46,21 @@ function TrainMesh({ trainId }: { trainId: string }) {
   const train = useGameStore(s => s.trains.get(trainId));
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
+
+  // Stable freight car model selection per train
+  const freightModels = useMemo(() => {
+    if (!train) return [];
+    const models = TRAIN_MODELS[train.type];
+    if (!models?.freight) return [];
+    // Use train id hash for deterministic selection
+    let hash = 0;
+    for (let i = 0; i < train.id.length; i++) hash = ((hash << 5) - hash + train.id.charCodeAt(i)) | 0;
+    return Array.from({ length: train.cars }, (_, i) => {
+      if (i === 0) return models.front;
+      if (i === train.cars - 1) return models.rear;
+      return models.freight![Math.abs(hash + i * 7) % models.freight!.length];
+    });
+  }, [train?.id, train?.type, train?.cars]);
 
   useFrame(() => {
     const { trains, tracks, map } = useGameStore.getState();
@@ -64,12 +87,12 @@ function TrainMesh({ trainId }: { trainId: string }) {
   });
 
   if (!train) return null;
-
   const models = TRAIN_MODELS[train.type];
-  if (!models) return null; // Omit unsupported train types (steam)
+  if (!models) return null;
 
   const carSpacing = train.type === 'shinkansen' ? 0.22 : 0.24;
   const cars = train.cars;
+  const hasFreight = freightModels.length > 0;
 
   return (
     <group ref={groupRef}>
@@ -77,7 +100,13 @@ function TrainMesh({ trainId }: { trainId: string }) {
         const isFront = i === 0;
         const isBack = i === cars - 1;
         const zPos = (i - (cars - 1) / 2) * carSpacing;
-        const modelPath = isFront ? models.front : isBack ? models.rear : models.car;
+
+        let modelPath: string;
+        if (hasFreight) {
+          modelPath = freightModels[i];
+        } else {
+          modelPath = isFront ? models.front : isBack ? models.rear : models.car;
+        }
 
         return (
           <group key={i} position={[0, 0, zPos]}>
@@ -85,10 +114,9 @@ function TrainMesh({ trainId }: { trainId: string }) {
               <GLBTrainCar modelPath={modelPath} />
             </Suspense>
 
-            {/* Headlights on front car */}
             {isFront && (
               <>
-                <mesh position={[0.04, 0.01, 0.09]}>
+                <mesh position={[0.04, 0.02, 0.1]}>
                   <sphereGeometry args={[0.012, 6, 6]} />
                   <meshStandardMaterial
                     color="#ffffee"
@@ -96,7 +124,7 @@ function TrainMesh({ trainId }: { trainId: string }) {
                     emissiveIntensity={isNight ? 1.0 : 0.2}
                   />
                 </mesh>
-                <mesh position={[-0.04, 0.01, 0.09]}>
+                <mesh position={[-0.04, 0.02, 0.1]}>
                   <sphereGeometry args={[0.012, 6, 6]} />
                   <meshStandardMaterial
                     color="#ffffee"
@@ -105,19 +133,18 @@ function TrainMesh({ trainId }: { trainId: string }) {
                   />
                 </mesh>
                 {isNight && (
-                  <pointLight position={[0, 0.02, 0.15]} color="#ffffcc" intensity={0.5} distance={3} decay={2} />
+                  <pointLight position={[0, 0.03, 0.15]} color="#ffffcc" intensity={0.5} distance={3} decay={2} />
                 )}
               </>
             )}
 
-            {/* Tail lights on back car */}
             {isBack && (
               <>
-                <mesh position={[0.04, 0.01, -0.09]}>
+                <mesh position={[0.04, 0.02, -0.1]}>
                   <sphereGeometry args={[0.01, 6, 6]} />
                   <meshStandardMaterial color="#ff3333" emissive="#ff2222" emissiveIntensity={0.6} />
                 </mesh>
-                <mesh position={[-0.04, 0.01, -0.09]}>
+                <mesh position={[-0.04, 0.02, -0.1]}>
                   <sphereGeometry args={[0.01, 6, 6]} />
                   <meshStandardMaterial color="#ff3333" emissive="#ff2222" emissiveIntensity={0.6} />
                 </mesh>

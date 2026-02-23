@@ -1,69 +1,33 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { useMemo, Suspense, useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { useGLTF, Clone } from '@react-three/drei';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import { isDiagonal } from '../game/constants.ts';
 import type { Signal, Direction } from '../game/types.ts';
 
-// Shared geometries
-const ballastGeo = new THREE.BoxGeometry(1.08, 0.06, 0.6);
-const railGeo = new THREE.BoxGeometry(1.08, 0.025, 0.03);
-const sleeperGeo = new THREE.BoxGeometry(0.09, 0.03, 0.45);
-const pillarGeo = new THREE.BoxGeometry(0.1, 1.0, 0.1);
-
-// Load real textures for tracks
 const BASE = import.meta.env.BASE_URL;
-const texLoader = new THREE.TextureLoader();
-function loadTiledTexture(path: string): THREE.Texture {
-  const tex = texLoader.load(BASE + path.replace(/^\//, ''));
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(2, 1);
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.anisotropy = 4;
-  return tex;
-}
 
-// Shared materials with real textures
-const ballastMat = new THREE.MeshStandardMaterial({
-  color: '#9a8a78',
-  map: loadTiledTexture('/textures/gravel-color.jpg'),
-  normalMap: loadTiledTexture('/textures/gravel-normal.jpg'),
-  normalScale: new THREE.Vector2(0.3, 0.3),
-  roughnessMap: loadTiledTexture('/textures/gravel-roughness.jpg'),
-  roughness: 0.92,
-  metalness: 0.0,
-});
-const railMat = new THREE.MeshStandardMaterial({
-  color: '#808888',
-  map: loadTiledTexture('/textures/metal-color.jpg'),
-  normalMap: loadTiledTexture('/textures/metal-normal.jpg'),
-  normalScale: new THREE.Vector2(0.2, 0.2),
-  roughness: 0.25,
-  metalness: 0.7,
-});
-const sleeperMat = new THREE.MeshStandardMaterial({
-  color: '#5a4030',
-  map: loadTiledTexture('/textures/wood-color.jpg'),
-  normalMap: loadTiledTexture('/textures/wood-normal.jpg'),
-  normalScale: new THREE.Vector2(0.25, 0.25),
-  roughness: 0.9,
-  metalness: 0.0,
-});
+// Kenney Train Kit track models
+const TRACK_STRAIGHT = BASE + 'models/kenney-trains/railroad-straight.glb';
+const TRACK_CURVE = BASE + 'models/kenney-trains/railroad-curve.glb';
+// Rails-only for elevated sections
+const RAIL_STRAIGHT = BASE + 'models/kenney-trains/railroad-rail-straight.glb';
+const RAIL_CURVE = BASE + 'models/kenney-trains/railroad-rail-curve.glb';
+
+useGLTF.preload(TRACK_STRAIGHT);
+useGLTF.preload(TRACK_CURVE);
+useGLTF.preload(RAIL_STRAIGHT);
+useGLTF.preload(RAIL_CURVE);
+
+// Pillar geometry for elevated tracks
+const pillarGeo = new THREE.BoxGeometry(0.12, 1.0, 0.12);
 const pillarMat = new THREE.MeshStandardMaterial({
   color: '#888888',
-  map: loadTiledTexture('/textures/concrete-color.jpg'),
-  normalMap: loadTiledTexture('/textures/concrete-normal.jpg'),
-  normalScale: new THREE.Vector2(0.2, 0.2),
   roughness: 0.5,
   metalness: 0.3,
 });
-
-const SLEEPER_COUNT = 7;
-const sleeperOffsets: number[] = [];
-for (let i = 0; i < SLEEPER_COUNT; i++) {
-  sleeperOffsets.push(-0.45 + (i / (SLEEPER_COUNT - 1)) * 0.9);
-}
 
 const _mat4 = new THREE.Matrix4();
 const _pos = new THREE.Vector3();
@@ -71,10 +35,20 @@ const _quat = new THREE.Quaternion();
 const _scale = new THREE.Vector3();
 const _euler = new THREE.Euler();
 
-function computeSegmentTransform(
+interface TrackTileData {
+  cx: number;
+  cy: number;
+  cz: number;
+  rotY: number;
+  scaleX: number;
+  isElevated: boolean;
+  isCurve: boolean;
+}
+
+function computeSegmentData(
   startX: number, startZ: number, endX: number, endZ: number,
-  direction: Direction, elevation: number, map: any,
-) {
+  direction: Direction, elevation: number, trackType: string, map: any,
+): TrackTileData {
   const w1 = gridToWorld(startX, startZ);
   const w2 = gridToWorld(endX, endZ);
   const tile1 = map[startX]?.[startZ];
@@ -99,135 +73,98 @@ function computeSegmentTransform(
 
   return {
     cx: (w1.x + w2.x) / 2,
-    cy: avgH + 0.03 + elevationOffset,
+    cy: avgH + 0.02 + elevationOffset,
     cz: (w1.z + w2.z) / 2,
     rotY: rot,
     scaleX: diagonal ? Math.SQRT2 : 1,
     isElevated: elevated,
+    isCurve: trackType === 'curve',
   };
+}
+
+function TrackModel({ data }: { data: TrackTileData }) {
+  const modelPath = data.isCurve
+    ? (data.isElevated ? RAIL_CURVE : TRACK_CURVE)
+    : (data.isElevated ? RAIL_STRAIGHT : TRACK_STRAIGHT);
+  const { scene } = useGLTF(modelPath);
+
+  // Model BBox: X[-0.5,0.5] Y[-1,-0.9] Z[0,4]
+  // Y origin is at -1 (not 0), so we offset position.y by scaleY*1.0 to bring
+  // the model bottom to ground level. Z offset centers the scaled model.
+  const zScale = data.scaleX * 0.25;
+
+  return (
+    <group position={[data.cx, data.cy + 0.02, data.cz]} rotation={[0, data.rotY + Math.PI / 2, 0]}>
+      <Clone
+        object={scene}
+        position={[0, 1.2, -2 * zScale]}
+        scale={[0.55, 1.2, zScale]}
+        castShadow
+        receiveShadow
+      />
+    </group>
+  );
+}
+
+function ElevatedPillars({ pillars }: { pillars: { x: number; y: number; z: number; rotY: number }[] }) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    for (let i = 0; i < pillars.length; i++) {
+      const p = pillars[i];
+      _pos.set(p.x, p.y, p.z);
+      _euler.set(0, p.rotY, 0);
+      _quat.setFromEuler(_euler);
+      _scale.set(1, 1, 1);
+      _mat4.compose(_pos, _quat, _scale);
+      ref.current.setMatrixAt(i, _mat4);
+    }
+    ref.current.instanceMatrix.needsUpdate = true;
+  }, [pillars]);
+
+  if (pillars.length === 0) return null;
+  return <instancedMesh ref={ref} args={[pillarGeo, pillarMat, pillars.length]} castShadow />;
 }
 
 function TrackInstances() {
   const tracks = useGameStore(s => s.tracks);
   const map = useGameStore(s => s.map);
 
-  const ballastRef = useRef<THREE.InstancedMesh>(null);
-  const rail1Ref = useRef<THREE.InstancedMesh>(null);
-  const rail2Ref = useRef<THREE.InstancedMesh>(null);
-  const sleeperRef = useRef<THREE.InstancedMesh>(null);
-  const pillarRef = useRef<THREE.InstancedMesh>(null);
-
-  const segData = useMemo(() => {
+  const { trackData, pillars } = useMemo(() => {
     const segments = Array.from(tracks.values());
-    const data = segments.map(seg => computeSegmentTransform(
+    const data = segments.map(seg => computeSegmentData(
       seg.startX, seg.startZ, seg.endX, seg.endZ,
-      seg.direction, seg.elevation, map,
+      seg.direction, seg.elevation, seg.type, map,
     ));
-    const pillarCount = data.filter(d => d.isElevated).length * 2;
-    return { segments, data, pillarCount };
-  }, [tracks, map]);
-
-  const segCount = segData.segments.length;
-  const sleeperTotal = segCount * SLEEPER_COUNT;
-
-  useEffect(() => {
-    const { data } = segData;
-
-    for (let i = 0; i < data.length; i++) {
-      const d = data[i];
-
-      // Ballast
-      _pos.set(d.cx, d.cy, d.cz);
-      _euler.set(0, d.rotY, 0);
-      _quat.setFromEuler(_euler);
-      _scale.set(d.scaleX, 1, 1);
-      _mat4.compose(_pos, _quat, _scale);
-      ballastRef.current?.setMatrixAt(i, _mat4);
-
-      // Rails (offset in local Z)
-      for (const [ref, zOff] of [[rail1Ref, 0.12], [rail2Ref, -0.12]] as const) {
-        _pos.set(
-          d.cx + Math.sin(d.rotY) * zOff * d.scaleX,
-          d.cy + 0.055,
-          d.cz + Math.cos(d.rotY) * zOff * d.scaleX,
-        );
-        // No, this is wrong for local-space offsets. Let me compute properly.
-        // Use a local-to-world approach: apply rotation to the local offset
-        const localX = 0;
-        const localZ = zOff;
-        const cosR = Math.cos(d.rotY);
-        const sinR = Math.sin(d.rotY);
-        _pos.set(
-          d.cx + (localX * cosR - localZ * sinR) * d.scaleX,
-          d.cy + 0.055,
-          d.cz + (localX * sinR + localZ * cosR) * d.scaleX,
-        );
-        _euler.set(0, d.rotY, 0);
-        _quat.setFromEuler(_euler);
-        _scale.set(d.scaleX, 1, 1);
-        _mat4.compose(_pos, _quat, _scale);
-        ref.current?.setMatrixAt(i, _mat4);
-      }
-
-      // Sleepers
-      for (let j = 0; j < SLEEPER_COUNT; j++) {
-        const localX = sleeperOffsets[j];
-        const cosR = Math.cos(d.rotY);
-        const sinR = Math.sin(d.rotY);
-        _pos.set(
-          d.cx + localX * cosR * d.scaleX,
-          d.cy + 0.035,
-          d.cz + localX * sinR * d.scaleX,
-        );
-        _euler.set(0, d.rotY, 0);
-        _quat.setFromEuler(_euler);
-        _scale.set(d.scaleX, 1, 1);
-        _mat4.compose(_pos, _quat, _scale);
-        sleeperRef.current?.setMatrixAt(i * SLEEPER_COUNT + j, _mat4);
-      }
-    }
-
-    // Pillars for elevated segments
-    let pi = 0;
-    for (let i = 0; i < data.length; i++) {
-      const d = data[i];
+    const pillarList: { x: number; y: number; z: number; rotY: number }[] = [];
+    for (const d of data) {
       if (!d.isElevated) continue;
       for (const localX of [-0.3, 0.3]) {
         const cosR = Math.cos(d.rotY);
         const sinR = Math.sin(d.rotY);
-        _pos.set(
-          d.cx + localX * cosR * d.scaleX,
-          d.cy - 0.5,
-          d.cz + localX * sinR * d.scaleX,
-        );
-        _euler.set(0, d.rotY, 0);
-        _quat.setFromEuler(_euler);
-        _scale.set(1, 1, 1);
-        _mat4.compose(_pos, _quat, _scale);
-        pillarRef.current?.setMatrixAt(pi++, _mat4);
+        pillarList.push({
+          x: d.cx + localX * cosR * d.scaleX,
+          y: d.cy - 0.5,
+          z: d.cz + localX * sinR * d.scaleX,
+          rotY: d.rotY,
+        });
       }
     }
+    return { trackData: data, pillars: pillarList };
+  }, [tracks, map]);
 
-    // Notify Three.js of updates
-    if (ballastRef.current) ballastRef.current.instanceMatrix.needsUpdate = true;
-    if (rail1Ref.current) rail1Ref.current.instanceMatrix.needsUpdate = true;
-    if (rail2Ref.current) rail2Ref.current.instanceMatrix.needsUpdate = true;
-    if (sleeperRef.current) sleeperRef.current.instanceMatrix.needsUpdate = true;
-    if (pillarRef.current) pillarRef.current.instanceMatrix.needsUpdate = true;
-  }, [segData]);
-
-  if (segCount === 0) return null;
+  if (trackData.length === 0) return null;
 
   return (
-    <group>
-      <instancedMesh ref={ballastRef} args={[ballastGeo, ballastMat, segCount]} receiveShadow />
-      <instancedMesh ref={rail1Ref} args={[railGeo, railMat, segCount]} castShadow />
-      <instancedMesh ref={rail2Ref} args={[railGeo, railMat, segCount]} castShadow />
-      <instancedMesh ref={sleeperRef} args={[sleeperGeo, sleeperMat, sleeperTotal]} castShadow receiveShadow />
-      {segData.pillarCount > 0 && (
-        <instancedMesh ref={pillarRef} args={[pillarGeo, pillarMat, segData.pillarCount]} castShadow />
-      )}
-    </group>
+    <Suspense fallback={null}>
+      <group>
+        {trackData.map((d, i) => (
+          <TrackModel key={i} data={d} />
+        ))}
+        <ElevatedPillars pillars={pillars} />
+      </group>
+    </Suspense>
   );
 }
 

@@ -62,7 +62,7 @@ function StationMesh({ station }: { station: Station }) {
     }
 
     return {
-      position: [w.x, h, w.z] as [number, number, number],
+      position: [w.x, h + 0.05, w.z] as [number, number, number],
       rotY: rot,
     };
   }, [station, map, tracks]);

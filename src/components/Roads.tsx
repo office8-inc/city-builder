@@ -7,20 +7,19 @@ import { GRID_SIZE } from '../game/constants.ts';
 
 const BASE = import.meta.env.BASE_URL;
 
-// Road model paths (kaykit-city)
+// Kenney City Builder road models (GLB)
 const ROAD_MODELS = {
-  straight: BASE + 'models/kaykit-city/road_straight.gltf',
-  corner: BASE + 'models/kaykit-city/road_corner_curved.gltf',
-  tsplit: BASE + 'models/kaykit-city/road_tsplit.gltf',
-  junction: BASE + 'models/kaykit-city/road_junction.gltf',
+  straight: BASE + 'models/road-straight.glb',
+  straightLights: BASE + 'models/road-straight-lightposts.glb',
+  corner: BASE + 'models/road-corner.glb',
+  tsplit: BASE + 'models/road-split.glb',
+  junction: BASE + 'models/road-intersection.glb',
 };
-const STREETLIGHT_MODEL = BASE + 'models/kaykit-city/streetlight.gltf';
 
 // Preload all road models
 Object.values(ROAD_MODELS).forEach(p => useGLTF.preload(p));
-useGLTF.preload(STREETLIGHT_MODEL);
 
-type RoadShape = 'straight' | 'corner' | 'tsplit' | 'junction';
+type RoadShape = 'straight' | 'straightLights' | 'corner' | 'tsplit' | 'junction';
 
 interface RoadTileInfo {
   x: number;
@@ -47,9 +46,13 @@ function computeRoadConnectivity(
 
   switch (count) {
     case 0:
+      return { shape: 'junction', rotY: 0 };
     case 1: {
-      if (N || S) return { shape: 'straight', rotY: 0 };
-      return { shape: 'straight', rotY: Math.PI / 2 };
+      if (N) return { shape: 'straight', rotY: 0 };
+      if (S) return { shape: 'straight', rotY: 0 };
+      if (E) return { shape: 'straight', rotY: Math.PI / 2 };
+      if (W) return { shape: 'straight', rotY: Math.PI / 2 };
+      return { shape: 'straight', rotY: 0 };
     }
     case 2: {
       if (N && S) return { shape: 'straight', rotY: 0 };
@@ -79,29 +82,29 @@ function RoadTile({ tile }: { tile: RoadTileInfo }) {
   return (
     <Clone
       object={scene}
-      position={[tile.x, tile.h + 0.01, tile.z]}
+      position={[tile.x, tile.h + 0.02, tile.z]}
       rotation={[0, tile.rotY, 0]}
-      scale={0.5}
+      scale={1.0}
       receiveShadow
     />
   );
 }
 
-function StreetLight({ position, isNight }: { position: [number, number, number]; isNight: boolean }) {
-  const { scene } = useGLTF(STREETLIGHT_MODEL);
+function RoadLights({ positions, isNight }: { positions: [number, number, number][]; isNight: boolean }) {
+  if (!isNight || positions.length === 0) return null;
   return (
-    <group position={position}>
-      <Clone object={scene} scale={0.3} castShadow />
-      {isNight && (
+    <>
+      {positions.map((pos, i) => (
         <pointLight
-          position={[0, 0.4, 0]}
+          key={i}
+          position={pos}
           color="#ffeecc"
-          intensity={0.3}
-          distance={2.5}
+          intensity={1.5}
+          distance={6}
           decay={2}
         />
-      )}
-    </group>
+      ))}
+    </>
   );
 }
 
@@ -111,32 +114,53 @@ export function Roads() {
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
 
-  const { roadTiles, streetLights } = useMemo(() => {
+  const { roadTiles, lightPositions } = useMemo(() => {
     const tiles: RoadTileInfo[] = [];
     const lights: [number, number, number][] = [];
+
+    // Pre-compute smoothed road heights
+    const roadHeights: Map<string, number> = new Map();
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        const tile = map[x][z];
+        if (tile.roadLevel > 0) {
+          let sum = getTileWorldHeight(tile);
+          let cnt = 1;
+          for (const [nx, nz] of [[x-1,z],[x+1,z],[x,z-1],[x,z+1]]) {
+            if (nx >= 0 && nx < GRID_SIZE && nz >= 0 && nz < GRID_SIZE && map[nx][nz].roadLevel > 0) {
+              sum += getTileWorldHeight(map[nx][nz]);
+              cnt++;
+            }
+          }
+          roadHeights.set(`${x},${z}`, sum / cnt);
+        }
+      }
+    }
 
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let z = 0; z < GRID_SIZE; z++) {
         const tile = map[x][z];
         if (tile.roadLevel > 0 && !tile.buildingId && !tile.stationId && tile.trackIds.length === 0 && !tile.subsidiaryId) {
           const w = gridToWorld(x, z);
-          const h = getTileWorldHeight(tile);
-          const { shape, rotY } = computeRoadConnectivity(x, z, map);
+          const h = roadHeights.get(`${x},${z}`) ?? getTileWorldHeight(tile);
+          let { shape, rotY } = computeRoadConnectivity(x, z, map);
+
+          // Use lightpost variant for every 4th straight tile
+          const useLights = shape === 'straight' && (x + z) % 4 === 0;
+          if (useLights) {
+            shape = 'straightLights';
+            lights.push([w.x, h + 0.45, w.z]);
+          }
 
           tiles.push({
             x: w.x, z: w.z, h,
             shape, rotY,
             modelPath: ROAD_MODELS[shape],
           });
-
-          // Street lights every ~4 tiles on main roads
-          if (tile.roadLevel >= 2 && (x + z) % 4 === 0) {
-            lights.push([w.x + 0.4, h, w.z + 0.4]);
-          }
         }
       }
     }
-    return { roadTiles: tiles, streetLights: lights };
+    return { roadTiles: tiles, lightPositions: lights };
   }, [map, buildings]);
 
   if (roadTiles.length === 0) return null;
@@ -147,9 +171,7 @@ export function Roads() {
         {roadTiles.map((tile, i) => (
           <RoadTile key={i} tile={tile} />
         ))}
-        {streetLights.map((pos, i) => (
-          <StreetLight key={`sl${i}`} position={pos} isNight={isNight} />
-        ))}
+        <RoadLights positions={lightPositions} isNight={isNight} />
       </group>
     </Suspense>
   );

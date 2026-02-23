@@ -10,6 +10,7 @@ import type {
   Signal,
   TerrainType,
 } from './types.ts';
+import { generateStationRoads } from './materials.ts';
 import {
   TRACK_COSTS,
   STATION_COSTS,
@@ -257,6 +258,10 @@ export function createBuildStation(set: SetFn, get: GetFn) {
 
     const newCash = state.constructionMode ? finance.cash : finance.cash - cost;
     set({ stations: newStations, finance: { ...finance, cash: newCash } });
+
+    // Generate road network around the station
+    generateStationRoads(x, z, map);
+
     get().addNotification(`${name}駅を建設 (${formatMoney(cost)})`, 'success');
   };
 }

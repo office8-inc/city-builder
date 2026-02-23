@@ -256,11 +256,11 @@ function getDayNightParams(hour: number) {
     fogColor = '#7799aa';
     skyTurbidity = 8;
   } else {
-    ambientIntensity = 0.22;
-    ambientColor = '#334466';
+    ambientIntensity = 0.55;
+    ambientColor = '#556688';
     sunIntensity = 0.15;
     sunColor = '#667799';
-    fogColor = '#1a2a40';
+    fogColor = '#2a3a55';
     skyTurbidity = 10;
   }
 
@@ -306,14 +306,14 @@ function DynamicLights() {
       {/* 月光（夜間）/ フィルライト（昼間） */}
       <directionalLight
         position={params.isDaytime ? [-40, 50, -30] : [60, 80, 40]}
-        intensity={params.isDaytime ? 0.25 : 0.18}
-        color={params.isDaytime ? '#b4c8e8' : '#8899bb'}
+        intensity={params.isDaytime ? 0.25 : 0.4}
+        color={params.isDaytime ? '#b4c8e8' : '#99aabb'}
       />
       <hemisphereLight
         args={[
           params.isDaytime ? '#4a90d9' : '#2a3a5a',
           params.isDaytime ? '#3a8a2a' : '#1a2a20',
-          params.isDaytime ? 0.45 : 0.25,
+          params.isDaytime ? 0.45 : 0.4,
         ]}
       />
     </>
@@ -324,7 +324,7 @@ function DynamicFog() {
   const hour = useGameStore(s => s.gameTime.hour);
   const params = useMemo(() => getDayNightParams(hour), [hour]);
 
-  return <fog attach="fog" args={[params.fogColor, params.isDaytime ? 100 : 80, params.isDaytime ? 280 : 220]} />;
+  return <fog attach="fog" args={[params.fogColor, params.isDaytime ? 100 : 120, params.isDaytime ? 280 : 350]} />;
 }
 
 function DynamicSky() {
