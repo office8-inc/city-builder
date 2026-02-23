@@ -67,27 +67,17 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
       // Map height to 0-10 scale
       const tileHeight = Math.round(height * 10);
 
-      // Determine terrain type
+      // 地形判定: 水域以外はすべて平地（高低差なし）
       let terrain: TerrainType;
       if (tileHeight <= 1) {
         terrain = 'water';
-      } else if (tileHeight >= 8) {
-        terrain = 'mountain';
-      } else if (tileHeight >= 6) {
-        terrain = 'hill';
       } else {
-        // Forest noise (separate from height)
-        const forestNoise = fbm(nx + 100, nz + 100, 3, 5.0, 2.0, 0.5);
-        if (forestNoise > 0.3 && tileHeight >= 3 && tileHeight <= 5) {
-          terrain = 'forest';
-        } else {
-          terrain = 'flat';
-        }
+        terrain = 'flat';
       }
 
       map[x][z] = {
         terrain,
-        height: tileHeight,
+        height: terrain === 'water' ? tileHeight : 3,
         trackIds: [],
         buildingId: null,
         stationId: null,

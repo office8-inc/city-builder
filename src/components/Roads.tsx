@@ -82,7 +82,7 @@ function RoadTile({ tile }: { tile: RoadTileInfo }) {
   return (
     <Clone
       object={scene}
-      position={[tile.x, tile.h + 0.02, tile.z]}
+      position={[tile.x, tile.h + 0.05, tile.z]}
       rotation={[0, tile.rotY, 0]}
       scale={1.0}
       receiveShadow
@@ -140,7 +140,8 @@ export function Roads() {
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let z = 0; z < GRID_SIZE; z++) {
         const tile = map[x][z];
-        if (tile.roadLevel > 0 && !tile.buildingId && !tile.stationId && tile.trackIds.length === 0 && !tile.subsidiaryId) {
+        // 建物・駅・子会社があるタイルでも道路を描画（接続の途切れを防ぐ）
+        if (tile.roadLevel > 0 && tile.trackIds.length === 0) {
           const w = gridToWorld(x, z);
           const h = roadHeights.get(`${x},${z}`) ?? getTileWorldHeight(tile);
           let { shape, rotY } = computeRoadConnectivity(x, z, map);

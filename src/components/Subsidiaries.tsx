@@ -9,23 +9,23 @@ import type { Subsidiary } from '../game/types.ts';
 
 const BASE = import.meta.env.BASE_URL;
 
-// Subsidiary type -> GLB/GLTF model path (null = omit)
+// Subsidiary type -> GLB model path — Kenneyのみ使用
 const SUBSIDIARY_MODELS: Record<string, string | null> = {
   factory:           BASE + 'models/kenney-buildings/hangar_roundB.glb',
   depot:             BASE + 'models/kenney-buildings/hangar_largeB.glb',
-  hotel:             BASE + 'models/kaykit-city/building_G.gltf',
-  department_store:  BASE + 'models/kaykit-city/building_H.gltf',
+  hotel:             BASE + 'models/kenney-commercial/building-skyscraper-a.glb',
+  department_store:  BASE + 'models/kenney-commercial/building-skyscraper-b.glb',
   power_plant:       BASE + 'models/kenney-buildings/structure_detailed.glb',
-  material_yard:     null,
+  material_yard:     BASE + 'models/kenney-buildings/hangar_smallB.glb',
   warehouse:         BASE + 'models/kenney-buildings/hangar_smallA.glb',
-  resort_hotel:      BASE + 'models/kaykit-city/building_F.gltf',
-  convenience_store: BASE + 'models/kaykit-city/building_A.gltf',
-  supermarket:       BASE + 'models/kaykit-city/building_B.gltf',
-  office_building:   BASE + 'models/kaykit-city/building_E.gltf',
-  apartment:         BASE + 'models/kaykit-city/building_D.gltf',
-  amusement_park:    null,
-  stadium:           null,
-  broadcast_tower:   null,
+  resort_hotel:      BASE + 'models/kenney-commercial/building-skyscraper-c.glb',
+  convenience_store: BASE + 'models/kenney-commercial/building-a.glb',
+  supermarket:       BASE + 'models/kenney-commercial/building-b.glb',
+  office_building:   BASE + 'models/kenney-commercial/building-skyscraper-d.glb',
+  apartment:         BASE + 'models/kenney-suburban/building-type-k.glb',
+  amusement_park:    BASE + 'models/kenney-buildings/gate_complex.glb',
+  stadium:           BASE + 'models/kenney-buildings/hangar_roundGlass.glb',
+  broadcast_tower:   BASE + 'models/kenney-props/satelliteDish_large.glb',
 };
 
 // Preload all non-null models
@@ -83,8 +83,8 @@ function GLBSubMesh({ sub, modelPath }: { sub: Subsidiary; modelPath: string }) 
   const pos = useSubPosition(sub);
   const { scene } = useGLTF(modelPath);
 
-  const isKaykit = modelPath.includes('kaykit');
-  const scale = isKaykit ? 0.35 : 0.5;
+  // Kenneyモデルはデフォルトスケール1.0で使用
+  const scale = 1.0;
 
   const hasSmoke = sub.type === 'factory' || sub.type === 'power_plant';
 

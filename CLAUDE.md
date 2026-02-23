@@ -130,7 +130,17 @@ gamePhase        // 'title' | 'tutorial' | 'playing' | 'gameover' | ...
 | マップエディタ | 地形ブラシで自由に地形編集 |
 
 ## 実装上の注意
-- 外部3Dモデルなし — 全てコードでプロシージャル生成
+- **3Dモデル**: 全て外部GLB/GLTFアセット（Kenney City Kit / KayKit）を使用
+  - 建物: Kenney Suburban(住宅) / Commercial(商業) / Buildings(工業・文化) + KayKit-City(レジャー)
+  - 駅: Kenney Buildings（platform_small/long/high, structure, hangar_largeA）
+  - 列車: Kenney Train Kit（全7種: electric-city/square/double, diesel, bullet, locomotive, freight）
+  - 線路: Kenney Train Kit（railroad-straight/curve, rail-straight/curve）
+  - 道路: KayKit City（接続性アルゴリズムで straight/corner/tsplit/junction を自動選択）
+  - 子会社: Kenney Buildings + KayKit-City（全15種）
+  - 信号: KayKit City trafficlight
+  - 高架柱: Kenney Props supports_high
+  - 森林: Kenney Nature（detail_forestA）
+  - Kenney GLBモデルは外部テクスチャ `Textures/colormap.png` を参照（各モデルディレクトリに配置済み）
 - InstancedMeshで大量オブジェクトのパフォーマンス確保
 - 金額は整数で管理（浮動小数点誤差を回避）
 - グリッド座標: (x, z)、yは高さ方向

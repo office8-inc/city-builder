@@ -38,7 +38,8 @@ allPaths.forEach(p => useGLTF.preload(p));
 
 function GLBTrainCar({ modelPath }: { modelPath: string }) {
   const { scene } = useGLTF(modelPath);
-  return <Clone object={scene} scale={0.12} castShadow />;
+  // Kenneyモデルのデフォルトスケールに合わせる（線路Z=0.25比率）
+  return <Clone object={scene} scale={0.25} castShadow />;
 }
 
 function TrainMesh({ trainId }: { trainId: string }) {
@@ -77,7 +78,7 @@ function TrainMesh({ trainId }: { trainId: string }) {
     const p = t.positionOnSegment;
     groupRef.current.position.set(
       w1.x + (w2.x - w1.x) * p,
-      h1 + (h2 - h1) * p + 0.15,
+      h1 + (h2 - h1) * p + 0.25,
       w1.z + (w2.z - w1.z) * p
     );
     const dx = w2.x - w1.x;
@@ -90,7 +91,8 @@ function TrainMesh({ trainId }: { trainId: string }) {
   const models = TRAIN_MODELS[train.type];
   if (!models) return null;
 
-  const carSpacing = train.type === 'shinkansen' ? 0.22 : 0.24;
+  // スケール0.25に合わせてcar間隔も拡大
+  const carSpacing = train.type === 'shinkansen' ? 0.45 : 0.5;
   const cars = train.cars;
   const hasFreight = freightModels.length > 0;
 
@@ -116,16 +118,16 @@ function TrainMesh({ trainId }: { trainId: string }) {
 
             {isFront && (
               <>
-                <mesh position={[0.04, 0.02, 0.1]}>
-                  <sphereGeometry args={[0.012, 6, 6]} />
+                <mesh position={[0.08, 0.04, 0.2]}>
+                  <sphereGeometry args={[0.025, 6, 6]} />
                   <meshStandardMaterial
                     color="#ffffee"
                     emissive={isNight ? '#ffffaa' : '#444400'}
                     emissiveIntensity={isNight ? 1.0 : 0.2}
                   />
                 </mesh>
-                <mesh position={[-0.04, 0.02, 0.1]}>
-                  <sphereGeometry args={[0.012, 6, 6]} />
+                <mesh position={[-0.08, 0.04, 0.2]}>
+                  <sphereGeometry args={[0.025, 6, 6]} />
                   <meshStandardMaterial
                     color="#ffffee"
                     emissive={isNight ? '#ffffaa' : '#444400'}
@@ -133,19 +135,19 @@ function TrainMesh({ trainId }: { trainId: string }) {
                   />
                 </mesh>
                 {isNight && (
-                  <pointLight position={[0, 0.03, 0.15]} color="#ffffcc" intensity={0.5} distance={3} decay={2} />
+                  <pointLight position={[0, 0.06, 0.3]} color="#ffffcc" intensity={0.5} distance={3} decay={2} />
                 )}
               </>
             )}
 
             {isBack && (
               <>
-                <mesh position={[0.04, 0.02, -0.1]}>
-                  <sphereGeometry args={[0.01, 6, 6]} />
+                <mesh position={[0.08, 0.04, -0.2]}>
+                  <sphereGeometry args={[0.02, 6, 6]} />
                   <meshStandardMaterial color="#ff3333" emissive="#ff2222" emissiveIntensity={0.6} />
                 </mesh>
-                <mesh position={[-0.04, 0.02, -0.1]}>
-                  <sphereGeometry args={[0.01, 6, 6]} />
+                <mesh position={[-0.08, 0.04, -0.2]}>
+                  <sphereGeometry args={[0.02, 6, 6]} />
                   <meshStandardMaterial color="#ff3333" emissive="#ff2222" emissiveIntensity={0.6} />
                 </mesh>
               </>

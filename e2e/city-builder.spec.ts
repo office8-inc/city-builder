@@ -53,10 +53,10 @@ test.describe('App Startup & Basic Rendering', () => {
     await page.goto('/?autoplay');
     await waitForStore(page);
     // Check toolbar buttons
-    await expect(page.getByText('鉄道')).toBeVisible();
-    await expect(page.getByText('駅')).toBeVisible();
-    await expect(page.getByText('列車')).toBeVisible();
-    await expect(page.getByText('施設')).toBeVisible();
+    await expect(page.getByRole('button', { name: '鉄道' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '駅' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '列車' })).toBeVisible();
+    await expect(page.getByRole('button', { name: '施設' })).toBeVisible();
     // Check header info
     await expect(page.getByText('A-Train City')).toBeVisible();
   });

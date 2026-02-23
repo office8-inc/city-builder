@@ -8,16 +8,14 @@ import { getTileWorldHeight, getTerrainColor } from '../game/terrain.ts';
 
 const BASE = import.meta.env.BASE_URL;
 
-// Preload tree + car models
-const TREE_MODEL = BASE + 'models/kenney-nature/detail_forestA.gltf.glb';
+// Kenney車両モデル（駐車車両用）
 const CAR_MODELS = [
-  BASE + 'models/kaykit-city/car_sedan.gltf',
-  BASE + 'models/kaykit-city/car_hatchback.gltf',
-  BASE + 'models/kaykit-city/car_taxi.gltf',
-  BASE + 'models/kaykit-city/car_police.gltf',
-  BASE + 'models/kaykit-city/car_stationwagon.gltf',
+  BASE + 'models/kenney-vehicles/sedan.glb',
+  BASE + 'models/kenney-vehicles/hatchback-sports.glb',
+  BASE + 'models/kenney-vehicles/taxi.glb',
+  BASE + 'models/kenney-vehicles/police.glb',
+  BASE + 'models/kenney-vehicles/suv.glb',
 ];
-useGLTF.preload(TREE_MODEL);
 CAR_MODELS.forEach(p => useGLTF.preload(p));
 
 // Procedural grass textures (fallback)
@@ -96,7 +94,8 @@ function GroundMesh() {
       const gz = Math.min(GRID_SIZE - 1, Math.max(0, Math.floor(vz + halfGrid)));
       const tile = map[gx][gz];
       const height = getTileWorldHeight(tile);
-      positions.setY(i, tile.terrain !== 'water' ? height : -0.05);
+      // 水タイルは地面を水面より下に下げて水シェーダーが見えるようにする
+      positions.setY(i, tile.terrain !== 'water' ? height : -0.35);
       const [r, g, b] = getTerrainColor(tile.terrain, tile.height, gx, gz, season);
       colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
     }
@@ -145,62 +144,193 @@ function GroundWithRealTextures({ geometry }: { geometry: THREE.PlaneGeometry })
 }
 
 function WaterPlane() {
+  const map = useGameStore(s => s.map);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
+
+  // 水タイルのみをカバーするカスタムジオメトリを生成
+  const waterGeometry = useMemo(() => {
+    const halfGrid = GRID_SIZE / 2;
+    const positions: number[] = [];
+    const indices: number[] = [];
+    const vertexMap = new Map<string, number>();
+
+    function getOrCreateVertex(gx: number, gz: number): number {
+      const key = `${gx},${gz}`;
+      if (vertexMap.has(key)) return vertexMap.get(key)!;
+      const idx = vertexMap.size;
+      // ワールド座標に変換
+      positions.push(gx - halfGrid, 0, gz - halfGrid);
+      vertexMap.set(key, idx);
+      return idx;
+    }
+
+    for (let x = 0; x < GRID_SIZE; x++) {
+      for (let z = 0; z < GRID_SIZE; z++) {
+        if (map[x][z].terrain !== 'water') continue;
+        // タイルの4頂点
+        const v0 = getOrCreateVertex(x, z);
+        const v1 = getOrCreateVertex(x + 1, z);
+        const v2 = getOrCreateVertex(x + 1, z + 1);
+        const v3 = getOrCreateVertex(x, z + 1);
+        // 2つの三角形
+        indices.push(v0, v1, v2);
+        indices.push(v0, v2, v3);
+      }
+    }
+
+    if (positions.length === 0) return null;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }, [map]);
+
   const shaderMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uColor1: { value: new THREE.Color('#1a7fcc') },
-        uColor2: { value: new THREE.Color('#0e5fa8') },
+        uDeepColor: { value: new THREE.Color('#0a3d5c') },
+        uShallowColor: { value: new THREE.Color('#1a8fbc') },
         uSunDir: { value: new THREE.Vector3(0.5, 0.7, 0.3).normalize() },
         uSunColor: { value: new THREE.Vector3(1.0, 0.95, 0.85) },
         uNightFactor: { value: 0 },
       },
       vertexShader: `
         uniform float uTime;
-        varying vec2 vUv; varying vec3 vWorldPos; varying vec3 vNormal; varying vec3 vViewDir;
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+
+        // 多層波形で自然な水面を生成
+        float wave(vec2 p, float freq, float speed, vec2 dir) {
+          return sin(dot(p, dir) * freq + uTime * speed);
+        }
+
         void main() {
-          vUv = uv; vec3 pos = position;
-          pos.y += sin(pos.x*2.0+uTime*1.2)*0.05+cos(pos.z*1.8+uTime*0.9)*0.035
-                 +sin((pos.x+pos.z)*1.5+uTime*0.7)*0.025+sin(pos.x*8.0+uTime*3.0)*0.008+cos(pos.z*7.0+uTime*2.5)*0.006;
+          vec3 pos = position;
+
+          // 大きなうねり
+          float w1 = wave(pos.xz, 1.2, 0.8, vec2(1.0, 0.3)) * 0.06;
+          float w2 = wave(pos.xz, 0.8, 0.6, vec2(0.3, 1.0)) * 0.04;
+          // 中程度の波
+          float w3 = wave(pos.xz, 3.5, 1.5, vec2(0.7, 0.7)) * 0.02;
+          float w4 = wave(pos.xz, 2.8, 1.2, vec2(-0.5, 0.8)) * 0.015;
+          // 細かいさざ波
+          float w5 = wave(pos.xz, 8.0, 2.5, vec2(1.0, 0.0)) * 0.006;
+          float w6 = wave(pos.xz, 7.0, 2.2, vec2(0.0, 1.0)) * 0.005;
+          float w7 = wave(pos.xz, 12.0, 3.5, vec2(0.6, -0.8)) * 0.003;
+
+          pos.y += w1 + w2 + w3 + w4 + w5 + w6 + w7;
           vWorldPos = pos;
-          float dx = cos(pos.x*2.0+uTime*1.2)*2.0*0.05+cos((pos.x+pos.z)*1.5+uTime*0.7)*1.5*0.025+cos(pos.x*8.0+uTime*3.0)*8.0*0.008;
-          float dz = -sin(pos.z*1.8+uTime*0.9)*1.8*0.035+cos((pos.x+pos.z)*1.5+uTime*0.7)*1.5*0.025-sin(pos.z*7.0+uTime*2.5)*7.0*0.006;
+
+          // 法線の解析的計算
+          float dx = 0.0, dz = 0.0;
+          dx += cos(dot(pos.xz, vec2(1.0,0.3))*1.2+uTime*0.8)*1.2*1.0*0.06;
+          dz += cos(dot(pos.xz, vec2(1.0,0.3))*1.2+uTime*0.8)*1.2*0.3*0.06;
+          dx += cos(dot(pos.xz, vec2(0.3,1.0))*0.8+uTime*0.6)*0.8*0.3*0.04;
+          dz += cos(dot(pos.xz, vec2(0.3,1.0))*0.8+uTime*0.6)*0.8*1.0*0.04;
+          dx += cos(dot(pos.xz, vec2(0.7,0.7))*3.5+uTime*1.5)*3.5*0.7*0.02;
+          dz += cos(dot(pos.xz, vec2(0.7,0.7))*3.5+uTime*1.5)*3.5*0.7*0.02;
+          dx += cos(dot(pos.xz, vec2(-0.5,0.8))*2.8+uTime*1.2)*2.8*(-0.5)*0.015;
+          dz += cos(dot(pos.xz, vec2(-0.5,0.8))*2.8+uTime*1.2)*2.8*0.8*0.015;
+          dx += cos(dot(pos.xz, vec2(1.0,0.0))*8.0+uTime*2.5)*8.0*1.0*0.006;
+          dz += cos(dot(pos.xz, vec2(0.0,1.0))*7.0+uTime*2.2)*7.0*1.0*0.005;
+
           vNormal = normalize(vec3(-dx, 1.0, -dz));
+
           vec4 worldPos4 = modelMatrix * vec4(pos, 1.0);
           vViewDir = normalize(cameraPosition - worldPos4.xyz);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
         }
       `,
       fragmentShader: `
-        uniform float uTime; uniform vec3 uColor1; uniform vec3 uColor2;
-        uniform vec3 uSunDir; uniform vec3 uSunColor; uniform float uNightFactor;
-        varying vec2 vUv; varying vec3 vWorldPos; varying vec3 vNormal; varying vec3 vViewDir;
-        float caustics(vec2 p, float t) {
-          float c = sin(p.x*12.0+t*2.0)*cos(p.y*10.0+t*1.5)*0.5+sin(p.x*8.0-t*1.2)*cos(p.y*14.0+t*0.8)*0.3+sin((p.x+p.y)*6.0+t*1.8)*0.2;
-          return c*c;
+        uniform float uTime;
+        uniform vec3 uDeepColor;
+        uniform vec3 uShallowColor;
+        uniform vec3 uSunDir;
+        uniform vec3 uSunColor;
+        uniform float uNightFactor;
+        varying vec3 vWorldPos;
+        varying vec3 vNormal;
+        varying vec3 vViewDir;
+
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
         }
+
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float a = hash(i);
+          float b = hash(i + vec2(1.0, 0.0));
+          float c = hash(i + vec2(0.0, 1.0));
+          float d = hash(i + vec2(1.0, 1.0));
+          return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+        }
+
+        float caustics(vec2 p, float t) {
+          float n1 = noise(p * 6.0 + vec2(t * 0.8, t * 0.6));
+          float n2 = noise(p * 8.0 - vec2(t * 0.5, t * 0.9));
+          float n3 = noise(p * 12.0 + vec2(t * 1.2, -t * 0.4));
+          float c = n1 * n2 + n3 * 0.3;
+          return pow(c, 1.5) * 1.5;
+        }
+
         void main() {
-          float wave = sin(vWorldPos.x*4.0+uTime*1.5)*cos(vWorldPos.z*3.0+uTime*1.0);
-          vec3 color = mix(uColor1, uColor2, wave*0.5+0.5);
-          color = mix(color, vec3(0.04,0.08,0.18), uNightFactor*0.7);
-          float fresnel = pow(1.0-max(dot(vNormal, vViewDir),0.0),3.5);
-          color = mix(color, mix(vec3(0.5,0.7,0.95),vec3(0.1,0.15,0.3),uNightFactor), fresnel*0.55);
-          vec3 halfVec = normalize(uSunDir+vViewDir);
-          color += uSunColor*pow(max(dot(vNormal,halfVec),0.0),128.0)*1.2*(1.0-uNightFactor);
-          color += vec3(pow(max(wave,0.0),16.0)*0.3)*(1.0-uNightFactor*0.7);
-          color += vec3(0.15,0.25,0.1)*caustics(vWorldPos.xz*0.5,uTime)*smoothstep(-0.12,-0.02,vWorldPos.y)*(1.0-uNightFactor);
-          float foam = smoothstep(-0.08,-0.01,vWorldPos.y)*0.35;
-          foam *= smoothstep(0.2,0.8,sin(vWorldPos.x*20.0+uTime*4.0)*cos(vWorldPos.z*18.0+uTime*3.0)*0.5+0.5);
-          color = mix(color, vec3(0.88,0.94,0.98), foam);
+          // 深度による色の変化
+          float depthFactor = smoothstep(-0.15, 0.05, vWorldPos.y);
+          vec3 baseColor = mix(uDeepColor, uShallowColor, depthFactor);
+
+          // 波の色変化
+          float waveTint = sin(vWorldPos.x * 3.0 + uTime * 0.8) * cos(vWorldPos.z * 2.5 + uTime * 0.6) * 0.5 + 0.5;
+          baseColor = mix(baseColor, baseColor * 1.15, waveTint * 0.3);
+
+          // 夜間の暗さ
+          baseColor = mix(baseColor, vec3(0.02, 0.05, 0.12), uNightFactor * 0.75);
+
+          // フレネル反射
+          float fresnel = pow(1.0 - max(dot(vNormal, vViewDir), 0.0), 4.0);
+          vec3 skyColor = mix(vec3(0.4, 0.6, 0.9), vec3(0.05, 0.08, 0.15), uNightFactor);
+          baseColor = mix(baseColor, skyColor, fresnel * 0.6);
+
+          // 太陽スペキュラ
+          vec3 halfVec = normalize(uSunDir + vViewDir);
+          float spec = pow(max(dot(vNormal, halfVec), 0.0), 256.0);
+          baseColor += uSunColor * spec * 2.0 * (1.0 - uNightFactor);
+
+          // 水面のキラキラ
+          float sparkle = pow(max(dot(vNormal, halfVec), 0.0), 32.0);
+          baseColor += uSunColor * sparkle * 0.3 * (1.0 - uNightFactor * 0.8);
+
+          // コースティクス
+          float causticsVal = caustics(vWorldPos.xz * 0.3, uTime);
+          float causticsDepth = smoothstep(-0.15, 0.0, vWorldPos.y);
+          baseColor += vec3(0.1, 0.18, 0.08) * causticsVal * causticsDepth * (1.0 - uNightFactor);
+
+          // 岸辺の泡
+          float shoreFoam = smoothstep(-0.06, 0.02, vWorldPos.y) * 0.4;
+          float foamPattern = noise(vWorldPos.xz * 15.0 + vec2(uTime * 1.5, uTime * 1.2));
+          float foamDetail = noise(vWorldPos.xz * 30.0 - vec2(uTime * 2.0, uTime * 0.8));
+          shoreFoam *= smoothstep(0.35, 0.65, foamPattern * 0.7 + foamDetail * 0.3);
+          baseColor = mix(baseColor, vec3(0.85, 0.92, 0.96), shoreFoam);
+
+          // 月光反射（夜間）
           if (uNightFactor > 0.3) {
-            vec3 moonHalf = normalize(normalize(vec3(-0.3,0.8,0.5))+vViewDir);
-            color += vec3(0.3,0.35,0.5)*pow(max(dot(vNormal,moonHalf),0.0),64.0)*uNightFactor*0.6;
+            vec3 moonDir = normalize(vec3(-0.3, 0.8, 0.5));
+            vec3 moonHalf = normalize(moonDir + vViewDir);
+            float moonSpec = pow(max(dot(vNormal, moonHalf), 0.0), 96.0);
+            baseColor += vec3(0.25, 0.3, 0.45) * moonSpec * uNightFactor * 0.8;
+            float moonTrail = pow(max(dot(vNormal, moonHalf), 0.0), 8.0);
+            baseColor += vec3(0.08, 0.1, 0.18) * moonTrail * uNightFactor * 0.4;
           }
-          gl_FragColor = vec4(color, 0.82);
+
+          gl_FragColor = vec4(baseColor, 0.85);
         }
       `,
-      transparent: true, side: THREE.DoubleSide,
+      transparent: true, depthWrite: false, side: THREE.FrontSide,
     });
   }, []);
 
@@ -221,116 +351,12 @@ function WaterPlane() {
     }
   });
 
+  if (!waterGeometry) return null;
+
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]}>
-      <planeGeometry args={[GRID_SIZE, GRID_SIZE, 96, 96]} />
+    <mesh geometry={waterGeometry} position={[0, -0.05, 0]}>
       <primitive object={shaderMaterial} ref={materialRef} attach="material" />
     </mesh>
-  );
-}
-
-// GLB tree instances for forest tiles
-function ForestInstances() {
-  const map = useGameStore(s => s.map);
-  const { scene } = useGLTF(TREE_MODEL);
-
-  const treeData = useMemo(() => {
-    const trees: { pos: [number, number, number]; scale: number; rotY: number }[] = [];
-    const halfGrid = GRID_SIZE / 2;
-    for (let x = 0; x < GRID_SIZE; x++) {
-      for (let z = 0; z < GRID_SIZE; z++) {
-        const tile = map[x][z];
-        if (tile.terrain !== 'forest') continue;
-        const worldX = x - halfGrid + 0.5;
-        const worldZ = z - halfGrid + 0.5;
-        const baseY = getTileWorldHeight(tile);
-        const seed = x * 1000 + z;
-        const treeCount = 1 + (seed % 2);
-        for (let t = 0; t < treeCount; t++) {
-          const offsetX = ((seed * (t + 1) * 7) % 100) / 100 * 0.6 - 0.3;
-          const offsetZ = ((seed * (t + 1) * 13) % 100) / 100 * 0.6 - 0.3;
-          const scaleVar = 0.5 + ((seed * (t + 1) * 17) % 100) / 100 * 0.5;
-          const rotY = ((seed * (t + 1) * 31) % 100) / 100 * Math.PI * 2;
-          trees.push({
-            pos: [worldX + offsetX, baseY, worldZ + offsetZ],
-            scale: scaleVar,
-            rotY,
-          });
-        }
-      }
-    }
-    return trees;
-  }, [map]);
-
-  if (treeData.length === 0) return null;
-
-  return (
-    <group>
-      {treeData.map((t, i) => (
-        <Clone
-          key={i}
-          object={scene}
-          position={t.pos}
-          scale={t.scale}
-          rotation={[0, t.rotY, 0]}
-          castShadow
-        />
-      ))}
-    </group>
-  );
-}
-
-// GLB trees near buildings
-function UrbanTrees() {
-  const buildings = useGameStore(s => s.buildings);
-  const map = useGameStore(s => s.map);
-  const { scene } = useGLTF(TREE_MODEL);
-
-  const treeData = useMemo(() => {
-    const trees: { pos: [number, number, number]; scale: number; rotY: number }[] = [];
-    const halfGrid = GRID_SIZE / 2;
-    const placed = new Set<string>();
-    for (const b of buildings.values()) {
-      const offsets = [[-1, 0], [b.width, 0], [0, -1], [0, b.depth]];
-      for (const [dx, dz] of offsets) {
-        const tx = b.x + dx;
-        const tz = b.z + dz;
-        const key = `${tx}_${tz}`;
-        if (placed.has(key)) continue;
-        if (tx < 0 || tx >= GRID_SIZE || tz < 0 || tz >= GRID_SIZE) continue;
-        const tile = map[tx]?.[tz];
-        if (!tile || tile.terrain === 'water' || tile.buildingId || tile.stationId || tile.trackIds.length > 0) continue;
-        const seed = tx * 997 + tz * 1013;
-        if ((seed % 100) > 30) continue;
-        placed.add(key);
-        const worldX = tx - halfGrid + 0.5;
-        const worldZ = tz - halfGrid + 0.5;
-        const baseY = getTileWorldHeight(tile);
-        trees.push({
-          pos: [worldX, baseY, worldZ],
-          scale: 0.3 + (seed % 30) / 100 * 0.2,
-          rotY: (seed % 100) / 100 * Math.PI * 2,
-        });
-      }
-    }
-    return trees;
-  }, [buildings, map]);
-
-  if (treeData.length === 0) return null;
-
-  return (
-    <group>
-      {treeData.map((t, i) => (
-        <Clone
-          key={i}
-          object={scene}
-          position={t.pos}
-          scale={t.scale}
-          rotation={[0, t.rotY, 0]}
-          castShadow
-        />
-      ))}
-    </group>
   );
 }
 
@@ -341,7 +367,7 @@ function ParkedCar({ modelIndex, position, rotY }: { modelIndex: number; positio
     <Clone
       object={scene}
       position={position}
-      scale={0.08}
+      scale={0.35}
       rotation={[0, rotY, 0]}
       castShadow
     />
@@ -396,10 +422,6 @@ export function Terrain() {
     <group>
       <GroundMesh />
       <WaterPlane />
-      <Suspense fallback={null}>
-        <ForestInstances />
-        <UrbanTrees />
-      </Suspense>
       <ParkedCars />
     </group>
   );
