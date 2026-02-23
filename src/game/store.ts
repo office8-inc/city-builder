@@ -34,7 +34,9 @@ import {
   createPlaceTrack, createBuildStation, createPlaceTrain, createBuildSubsidiary,
   createRemoveTrack, createBulldoze, createPlaceSignal,
   createBuyLand, createSellLand, createSetTileType,
+  setNextEntityId,
 } from './actions.ts';
+import { generateShowcaseData } from './showcase.ts';
 
 let nextNotificationId = 1;
 
@@ -61,18 +63,23 @@ const initialTime: GameTime = {
   year: INITIAL_YEAR, month: 4, day: 1, hour: 10, minute: 0,
 };
 
+// タイトル画面ではショーケース街を表示
+const _isAutoplay = typeof window !== 'undefined' && window.location.search.includes('autoplay');
+const _initialMap = generateTerrain(42);
+const _showcase = _isAutoplay ? null : generateShowcaseData(_initialMap);
+
 export const useGameStore = create<GameState>((set, get) => ({
   // Map
-  map: generateTerrain(42),
+  map: _initialMap,
   mapSize: GRID_SIZE,
 
-  // Entities
-  tracks: new Map<string, TrackSegment>(),
-  stations: new Map<string, Station>(),
-  trains: new Map<string, Train>(),
-  buildings: new Map<string, Building>(),
-  subsidiaries: new Map<string, Subsidiary>(),
-  signals: new Map<string, Signal>(),
+  // Entities（タイトル画面ならショーケースデータを適用）
+  tracks: _showcase?.tracks ?? new Map<string, TrackSegment>(),
+  stations: _showcase?.stations ?? new Map<string, Station>(),
+  trains: _showcase?.trains ?? new Map<string, Train>(),
+  buildings: _showcase?.buildings ?? new Map<string, Building>(),
+  subsidiaries: _showcase?.subsidiaries ?? new Map<string, Subsidiary>(),
+  signals: _showcase?.signals ?? new Map<string, Signal>(),
 
   // Economy
   finance: { ...initialFinance },
@@ -491,6 +498,38 @@ export const useGameStore = create<GameState>((set, get) => ({
   setConstructionMode: (mode: boolean) => set({ constructionMode: mode }),
   setScenarioId: (id: string | null) => set({ scenarioId: id }),
   setWeatherType: (type: WeatherType) => set({ weatherType: type }),
+
+  // ショーケースデータをクリアして新規ゲーム用に初期化
+  resetForNewGame: (seed?: number) => {
+    const newMap = generateTerrain(seed ?? 42);
+    setNextEntityId(1);
+    set({
+      map: newMap,
+      tracks: new Map(),
+      stations: new Map(),
+      trains: new Map(),
+      buildings: new Map(),
+      subsidiaries: new Map(),
+      signals: new Map(),
+      ownedLand: new Set<string>(),
+      loans: [],
+      finance: { ...initialFinance },
+      population: 0,
+      workforce: 0,
+      quarterlyHistory: [],
+      gameTime: { ...initialTime },
+      speed: 1,
+      season: getSeason(initialTime.month),
+      weatherType: 'clear',
+      lastDevelopmentDay: 0,
+      lastLevelUpMonth: 0,
+      lastAutoSaveDay: 0,
+      selectedTool: 'none',
+      selectedTrainId: null,
+      followTrainId: null,
+      notifications: [],
+    });
+  },
 }));
 
 // 開発時のみ: ブラウザコンソールからストアにアクセス

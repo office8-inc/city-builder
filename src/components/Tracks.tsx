@@ -1,5 +1,4 @@
-import { useMemo, Suspense, useRef, useEffect } from 'react';
-import * as THREE from 'three';
+import { useMemo, Suspense } from 'react';
 import { useGLTF, Clone } from '@react-three/drei';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
@@ -15,25 +14,16 @@ const TRACK_CURVE = BASE + 'models/kenney-trains/railroad-curve.glb';
 // Rails-only for elevated sections
 const RAIL_STRAIGHT = BASE + 'models/kenney-trains/railroad-rail-straight.glb';
 const RAIL_CURVE = BASE + 'models/kenney-trains/railroad-rail-curve.glb';
+// 高架線路の支柱
+const PILLAR_MODEL = BASE + 'models/kenney-props/supports_high.glb';
+// 信号機はプロシージャル（Kenneyに適切な鉄道信号モデルがないため）
 
 useGLTF.preload(TRACK_STRAIGHT);
 useGLTF.preload(TRACK_CURVE);
 useGLTF.preload(RAIL_STRAIGHT);
 useGLTF.preload(RAIL_CURVE);
+useGLTF.preload(PILLAR_MODEL);
 
-// Pillar geometry for elevated tracks
-const pillarGeo = new THREE.BoxGeometry(0.12, 1.0, 0.12);
-const pillarMat = new THREE.MeshStandardMaterial({
-  color: '#888888',
-  roughness: 0.5,
-  metalness: 0.3,
-});
-
-const _mat4 = new THREE.Matrix4();
-const _pos = new THREE.Vector3();
-const _quat = new THREE.Quaternion();
-const _scale = new THREE.Vector3();
-const _euler = new THREE.Euler();
 
 interface TrackTileData {
   cx: number;
@@ -106,25 +96,28 @@ function TrackModel({ data }: { data: TrackTileData }) {
   );
 }
 
+function PillarModel({ position, rotY }: { position: [number, number, number]; rotY: number }) {
+  const { scene } = useGLTF(PILLAR_MODEL);
+  return (
+    <Clone
+      object={scene}
+      position={position}
+      rotation={[0, rotY, 0]}
+      scale={[0.12, 0.5, 0.12]}
+      castShadow
+    />
+  );
+}
+
 function ElevatedPillars({ pillars }: { pillars: { x: number; y: number; z: number; rotY: number }[] }) {
-  const ref = useRef<THREE.InstancedMesh>(null);
-
-  useEffect(() => {
-    if (!ref.current) return;
-    for (let i = 0; i < pillars.length; i++) {
-      const p = pillars[i];
-      _pos.set(p.x, p.y, p.z);
-      _euler.set(0, p.rotY, 0);
-      _quat.setFromEuler(_euler);
-      _scale.set(1, 1, 1);
-      _mat4.compose(_pos, _quat, _scale);
-      ref.current.setMatrixAt(i, _mat4);
-    }
-    ref.current.instanceMatrix.needsUpdate = true;
-  }, [pillars]);
-
   if (pillars.length === 0) return null;
-  return <instancedMesh ref={ref} args={[pillarGeo, pillarMat, pillars.length]} castShadow />;
+  return (
+    <>
+      {pillars.map((p, i) => (
+        <PillarModel key={i} position={[p.x, p.y, p.z]} rotY={p.rotY} />
+      ))}
+    </>
+  );
 }
 
 function TrackInstances() {
@@ -174,29 +167,33 @@ const SIGNAL_COLORS: Record<Signal['state'], string> = {
   red: '#ff2222',
 };
 
+// プロシージャル鉄道信号機
 function SignalMesh({ signal }: { signal: Signal }) {
   const map = useGameStore(s => s.map);
   const pos = useMemo(() => {
     const w = gridToWorld(signal.x, signal.z);
     const tile = map[signal.x]?.[signal.z];
     const h = tile ? getTileWorldHeight(tile) : 0;
-    return [w.x + 0.3, h + 0.25, w.z + 0.3] as [number, number, number];
+    return [w.x + 0.3, h, w.z + 0.3] as [number, number, number];
   }, [signal.x, signal.z, map]);
 
   const color = SIGNAL_COLORS[signal.state];
 
   return (
     <group position={pos}>
-      <mesh position={[0, 0.12, 0]} castShadow>
-        <cylinderGeometry args={[0.015, 0.015, 0.35, 4]} />
-        <meshStandardMaterial color="#444" roughness={0.6} metalness={0.4} />
+      {/* 支柱 */}
+      <mesh position={[0, 0.25, 0]}>
+        <cylinderGeometry args={[0.02, 0.02, 0.5, 6]} />
+        <meshStandardMaterial color="#444444" />
       </mesh>
-      <mesh position={[0, 0.32, 0]} castShadow>
+      {/* 信号灯本体 */}
+      <mesh position={[0, 0.5, 0]}>
         <boxGeometry args={[0.06, 0.12, 0.04]} />
-        <meshStandardMaterial color="#222" roughness={0.7} />
+        <meshStandardMaterial color="#333333" />
       </mesh>
-      <mesh position={[0, 0.32, 0.025]}>
-        <circleGeometry args={[0.02, 8]} />
+      {/* 信号灯 */}
+      <mesh position={[0, 0.5, 0.025]}>
+        <circleGeometry args={[0.025, 8]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.5} />
       </mesh>
     </group>

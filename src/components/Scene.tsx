@@ -16,6 +16,7 @@ import { Weather } from './Weather.tsx';
 import { useGameStore } from '../game/store.ts';
 import { GRID_SIZE } from '../game/constants.ts';
 import { worldToGrid, isValidGridPosition } from '../utils/grid.ts';
+import { advanceTrainPosition } from '../game/trackUtils.ts';
 
 function SimulationLoop() {
   const tick = useGameStore(s => s.tick);
@@ -30,6 +31,39 @@ function SimulationLoop() {
     while (tickAccumulator.current >= 1) {
       tick();
       tickAccumulator.current -= 1;
+    }
+  });
+
+  return null;
+}
+
+// タイトル画面用: 列車だけを動かす軽量ループ（シミュレーション・財務は一切動かさない）
+function ShowcaseTrainLoop() {
+  const gamePhase = useGameStore(s => s.gamePhase);
+
+  useFrame((_, delta) => {
+    if (gamePhase !== 'title') return;
+    const state = useGameStore.getState();
+    const { trains, tracks, signals, stations } = state;
+    if (trains.size === 0) return;
+
+    const moveSpeed = 0.03 * delta * 4; // TRAIN_MOVE_SPEED相当 × delta × ticksPerSecond
+    let updated = false;
+    const newTrains = new Map(trains);
+
+    for (const [tid, train] of newTrains) {
+      if (train.state !== 'running') continue;
+      const update = advanceTrainPosition(train, tracks, moveSpeed, signals, stations);
+      if (update.positionOnSegment !== train.positionOnSegment ||
+          update.currentSegmentId !== train.currentSegmentId ||
+          update.direction !== train.direction) {
+        newTrains.set(tid, { ...train, ...update });
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      useGameStore.setState({ trains: newTrains });
     }
   });
 
@@ -391,6 +425,7 @@ export function GameScene() {
       <GridOverlay />
       <InteractionPlane />
       <SimulationLoop />
+      <ShowcaseTrainLoop />
       <KeyboardControls />
       <EffectComposer multisampling={0}>
         <N8AO

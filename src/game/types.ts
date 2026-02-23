@@ -351,4 +351,5 @@ export interface GameState {
   setScenarioId: (id: string | null) => void;
   setWeatherType: (type: WeatherType) => void;
   setTileType: (x: number, z: number, terrain: TerrainType, height?: number) => void;
+  resetForNewGame: (seed?: number) => void;
 }

@@ -220,14 +220,34 @@ function QuarterViewCamera() {
   return null;
 }
 
+// タイトル画面用: 街の中心をゆっくり周回する自動回転カメラ
+function ShowcaseCamera() {
+  const { camera } = useThree();
+
+  useFrame(({ clock }) => {
+    const t = clock.getElapsedTime();
+    const radius = 30;
+    const speed = 0.06;
+    const angle = t * speed;
+    const height = 20 + Math.sin(t * 0.12) * 4;
+
+    camera.position.set(
+      Math.cos(angle) * radius,
+      height,
+      Math.sin(angle) * radius,
+    );
+    camera.lookAt(0, 1, 0);
+  });
+
+  return null;
+}
+
 export function Camera() {
   const cameraMode = useGameStore(s => s.cameraMode);
+  const gamePhase = useGameStore(s => s.gamePhase);
 
-  if (cameraMode === 'follow') {
-    return <FollowCamera />;
-  }
-  if (cameraMode === 'quarter') {
-    return <QuarterViewCamera />;
-  }
+  if (gamePhase === 'title') return <ShowcaseCamera />;
+  if (cameraMode === 'follow') return <FollowCamera />;
+  if (cameraMode === 'quarter') return <QuarterViewCamera />;
   return <FreeCamera />;
 }

@@ -3,7 +3,7 @@ import { useGameStore } from '../game/store.ts';
 import { hasSavedGame } from '../game/saveLoad.ts';
 import { SCENARIOS } from '../game/scenarios.ts';
 import { formatMoney } from '../game/constants.ts';
-import { generateTerrain } from '../game/terrain.ts';
+
 
 type Screen = 'main' | 'scenario' | 'load';
 
@@ -13,12 +13,14 @@ export function TitleScreen() {
   const toggleHelpPanel = useGameStore(s => s.toggleHelpPanel);
   const setConstructionMode = useGameStore(s => s.setConstructionMode);
   const setScenarioId = useGameStore(s => s.setScenarioId);
+  const resetForNewGame = useGameStore(s => s.resetForNewGame);
 
   const [screen, setScreen] = useState<Screen>('main');
 
   const tutorialDone = localStorage.getItem('atrain-tutorial-done') === '1';
 
   const handleNewGame = () => {
+    resetForNewGame();
     setConstructionMode(false);
     setScenarioId(null);
     if (tutorialDone) {
@@ -29,6 +31,7 @@ export function TitleScreen() {
   };
 
   const handleConstruction = () => {
+    resetForNewGame();
     setConstructionMode(true);
     setScenarioId(null);
     setGamePhase('playing');
@@ -37,17 +40,17 @@ export function TitleScreen() {
   const handleScenario = (id: string) => {
     const scenario = SCENARIOS.find(s => s.id === id);
     if (!scenario) return;
+    resetForNewGame(scenario.mapSeed);
     setConstructionMode(false);
     setScenarioId(id);
-    const state = useGameStore.getState();
     useGameStore.setState({
-      map: generateTerrain(scenario.mapSeed),
-      finance: { ...state.finance, cash: scenario.initialCash },
+      finance: { ...useGameStore.getState().finance, cash: scenario.initialCash },
     });
     setGamePhase('playing');
   };
 
   const handleMapEditor = () => {
+    resetForNewGame();
     setConstructionMode(true);
     setScenarioId(null);
     setGamePhase('map_editor');
@@ -75,7 +78,7 @@ export function TitleScreen() {
   if (seedParam) {
     const seed = parseInt(seedParam, 10);
     if (!isNaN(seed)) {
-      useGameStore.setState({ map: generateTerrain(seed) });
+      resetForNewGame(seed);
       setGamePhase('playing');
       return null;
     }
@@ -84,8 +87,8 @@ export function TitleScreen() {
   if (screen === 'scenario') {
     return (
       <div className="absolute inset-0 flex items-center justify-center z-50">
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
-        <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl max-w-lg w-full mx-4">
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/50" />
+        <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8 shadow-2xl max-w-lg w-full mx-4">
           <h2 className="text-xl font-bold text-white mb-4">シナリオ選択</h2>
           <div className="space-y-3">
             {SCENARIOS.map(s => {
@@ -125,8 +128,8 @@ export function TitleScreen() {
   if (screen === 'load') {
     return (
       <div className="absolute inset-0 flex items-center justify-center z-50">
-        <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
-        <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 shadow-2xl max-w-md w-full mx-4">
+        <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/50" />
+        <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-8 shadow-2xl max-w-md w-full mx-4">
           <h2 className="text-xl font-bold text-white mb-4">セーブデータ</h2>
           <div className="space-y-2">
             {slots.map(({ slot, exists, label }) => (
@@ -158,8 +161,8 @@ export function TitleScreen() {
 
   return (
     <div className="absolute inset-0 flex items-center justify-center z-50">
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/50 to-black/70" />
-      <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-10 shadow-2xl text-center max-w-md w-full mx-4">
+      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/25 to-black/50" />
+      <div className="relative bg-white/10 backdrop-blur-sm border border-white/20 rounded-3xl p-10 shadow-2xl text-center max-w-md w-full mx-4">
         <div className="text-6xl mb-3">🚂</div>
         <h1 className="text-3xl font-bold text-white tracking-wide mb-1">
           A-Train City Builder
