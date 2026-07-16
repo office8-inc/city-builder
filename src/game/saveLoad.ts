@@ -162,25 +162,37 @@ function normalizeStation(s: Station, tracks: Map<string, TrackSegment>): Statio
   let elevation = savedElevation ?? defaultElevation;
 
   // v1.0で地下線路のelevationクランプ（Math.max(0, elevation)）を撤廃する前のセーブでは、
-  // 地下線路ツールで敷設した区間が実際にはelevation:0として直列化されていた
-  // （駅側は既にtype:'underground'で保存されている）。station.elevationが存在しない
-  // （＝旧セーブ由来）場合に限り、type由来の推定elevationが実際の接続線路のどれにも
-  // 存在しなければ、空リストを返す代わりに実際に接続されている線路のelevation（多数派）を
-  // 駅のelevationとして採用する。「セーブに実際に入っている線路との整合」を
-  // 「typeからの理論値」より優先することで、旧・地下鉄駅の接続が全滅するのを防ぐ
+  // 地下線路ツールで敷設した区間は必ずelevation:0として直列化されていた
+  // （Math.max(0, -1) === 0という決まった結果。駅側は既にtype:'underground'で保存されている）。
+  // station.elevationが存在しない（＝旧セーブ由来）場合に限り、type由来の推定elevationが
+  // 実際の接続線路のどれにも存在しなければ、空リストを返す代わりに実際に接続されている
+  // 線路のelevationを駅のelevationとして採用し直す。「セーブに実際に入っている線路との
+  // 整合」を「typeからの理論値」より優先することで、旧・地下鉄駅の接続が全滅するのを防ぐ。
+  //
+  // このとき、単純なセグメント数の多数決ではなく、まず「elevation:0が接続線路に含まれるか」
+  // を優先して見る（P2-E）。旧地下鉄駅が高架線と交差するタイルにある場合、レガシーな
+  // connectedTracksには全レイヤーのIDが混在しており、例えば地下鉄の終端線1本(クランプにより
+  // elevation:0で記録)+高架のスルー線2本(elevation:1、クランプの影響を受けないため正しい値)
+  // のような構成では、セグメント数の多数決だと本来無関係な高架線(2本)へ誤って駅を紐づけて
+  // しまう。クランプの既知の結果であるelevation:0を優先することで、これを回避する。
+  // elevation:0の線路が接続線路に1本も無い場合のみ、多数決にフォールバックする
   if (savedElevation === undefined) {
     const connectedElevations = s.connectedTracks
       .map(tid => tracks.get(tid)?.elevation)
       .filter((e): e is number => e !== undefined);
     if (connectedElevations.length > 0 && !connectedElevations.includes(elevation)) {
-      const counts = new Map<number, number>();
-      for (const e of connectedElevations) counts.set(e, (counts.get(e) ?? 0) + 1);
-      let bestElevation = elevation;
-      let bestCount = -1;
-      for (const [e, count] of counts) {
-        if (count > bestCount) { bestCount = count; bestElevation = e; }
+      if (connectedElevations.includes(0)) {
+        elevation = 0;
+      } else {
+        const counts = new Map<number, number>();
+        for (const e of connectedElevations) counts.set(e, (counts.get(e) ?? 0) + 1);
+        let bestElevation = elevation;
+        let bestCount = -1;
+        for (const [e, count] of counts) {
+          if (count > bestCount) { bestCount = count; bestElevation = e; }
+        }
+        elevation = bestElevation;
       }
-      elevation = bestElevation;
     }
   }
 

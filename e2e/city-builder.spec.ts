@@ -421,6 +421,63 @@ test.describe('Save/Load', () => {
     expect(result.connectedTracks).toEqual(result.originalConnectedTrackIds);
     expect(result.trainPlaced).toBe(true);
   });
+
+  test('legacy elevation fallback prefers the known clamp result (elevation:0) over a higher-segment-count elevated line (P2-E)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 地下線路のみのタイル(91,85)に地下鉄駅を建てる（現行コードのconnectedTracksは
+      // 本来この1本の地下線路IDのみ）
+      s.setSelectedTool('track_underground');
+      s.placeTrack(91, 85, 92, 85);
+      s.setSelectedTool('none');
+      s.buildStation(91, 85, 'underground');
+
+      const station = Array.from(window.__gameStore.getState().stations.values())[0];
+      const realUndergroundTrackId = station.connectedTracks[0];
+
+      // 駅を建てた後、同じタイル(91,85)を通る高架のスルー線を敷設する（=タイルがレイヤー
+      // 混在になる。旧・地下鉄駅の交差タイルを模した状況を作るための細工）
+      s.setSelectedTool('track_elevated');
+      s.placeTrack(90, 85, 92, 85);
+      s.setSelectedTool('none');
+      const tile = window.__gameStore.getState().map[91][85];
+      const tracks = window.__gameStore.getState().tracks;
+      const elevatedTrackIds = tile.trackIds.filter(tid => tracks.get(tid).elevation === 1);
+
+      // セーブJSONを、v1.0で地下線路のelevationクランプ(Math.max(0, elevation))を撤廃する
+      // 前のフォーマットへ意図的に書き換える: station.elevationは存在せず、connectedTracksは
+      // 全レイヤー混在（地下鉄の終端線1本 + 高架のスルー線2本）、地下線路はクランプにより
+      // elevation:0で記録されていた（高架線はクランプの影響を受けないためelevation:1のまま）
+      s.saveGame();
+      const raw = JSON.parse(localStorage.getItem('atrain-city-save'));
+      const stEntry = raw.stations.find(([id]) => id === station.id);
+      delete stEntry[1].elevation;
+      stEntry[1].connectedTracks = [...elevatedTrackIds, realUndergroundTrackId];
+      for (const [tid, t] of raw.tracks) {
+        if (tid === realUndergroundTrackId) t.elevation = 0;
+      }
+      localStorage.setItem('atrain-city-save', JSON.stringify(raw));
+
+      // ロードし直す
+      window.__gameStore.getState().loadGame();
+      const loadedStation = window.__gameStore.getState().stations.get(station.id);
+
+      return {
+        elevation: loadedStation.elevation,
+        connectedTracks: [...loadedStation.connectedTracks].sort(),
+        realUndergroundTrackId,
+        elevatedTrackCount: elevatedTrackIds.length,
+      };
+    })()`);
+    expect(result.elevatedTrackCount).toBe(2);
+    // セグメント数の多数決(高架2本)ではなく、クランプの既知の結果であるelevation:0を採用すること
+    expect(result.elevation).toBe(0);
+    // 本来の地下鉄線1本のみに正しく紐づき、無関係な高架線には紐づかないこと
+    expect(result.connectedTracks).toEqual([result.realUndergroundTrackId]);
+  });
 });
 
 test.describe('Console Error Check', () => {
