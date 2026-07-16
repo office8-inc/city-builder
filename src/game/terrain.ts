@@ -31,6 +31,24 @@ const MOUNTAIN_THRESHOLD = 0.56;
 const HILL_THRESHOLD = 0.40;
 const FOREST_THRESHOLD = 0.68;
 
+// combined値（0-1）を高さ（2-10）へ区分的線形マッピングする。
+// [0, HILL_THRESHOLD] → 2-6（平地）, [HILL_THRESHOLD, MOUNTAIN_THRESHOLD] → 6-8（丘陵）,
+// [MOUNTAIN_THRESHOLD, 1] → 8-10（山岳）。区間の境界で連続（同じ値）になるよう定義し、
+// 各区間の幅をgetTerrainColorの色正規化（flat: (height-2)/4, hill: (height-6)/2,
+// mountain: (height-8)/2）が前提とする範囲とそろえている
+function heightFromCombined(combinedForHeight: number): number {
+  if (combinedForHeight <= HILL_THRESHOLD) {
+    const t = combinedForHeight / HILL_THRESHOLD;
+    return Math.round(2 + t * 4);
+  } else if (combinedForHeight <= MOUNTAIN_THRESHOLD) {
+    const t = (combinedForHeight - HILL_THRESHOLD) / (MOUNTAIN_THRESHOLD - HILL_THRESHOLD);
+    return Math.round(6 + t * 2);
+  } else {
+    const t = Math.min(1, (combinedForHeight - MOUNTAIN_THRESHOLD) / (1 - MOUNTAIN_THRESHOLD));
+    return Math.round(8 + t * 2);
+  }
+}
+
 export function generateTerrain(seed: number = 42): MapTile[][] {
   const rng = mulberry32(seed);
   const noise2D = createNoise2D(rng);
@@ -115,14 +133,15 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
           terrain = 'flat';
         }
 
-        // 高さは地形タイプ（flat/hill/mountain）ごとに不連続な帯（例: 平地2-6, 丘陵6-8）へ
-        // ブラケット分けするのではなく、種別判定に使ったcombinedと同じ連続値から算出する。
-        // こうすることで丘陵/山岳としきい値のすぐ両側にある平地タイルの高さが近い値になり、
-        // 線路（Tracks.tsxは2タイル間の平均高さに水平に線路を置くだけで傾斜をつけない）や
-        // 建物が地形の境界で大きな段差に浮く/めり込む見た目を防ぐ（種別の色だけが変わり、
-        // 高さはなだらかに連続する）
-        const elevation01 = Math.min(1, Math.max(combined, height * 0.4));
-        tileFieldHeight = Math.max(2, Math.min(10, Math.round(2 + elevation01 * 8))); // 2-10
+        // 高さはcombinedの区分的線形（平地2-6→丘陵6-8→山岳8-10）で決める。
+        // 各区間の境界（HILL_THRESHOLD/MOUNTAIN_THRESHOLD）でちょうど同じ高さになるよう
+        // 継ぎ目なく接続するため、地形タイプが切り替わる境界タイル同士でも高さの段差が
+        // 生まれない（線路はTracks.tsxが2タイル間の平均高さに水平に置くだけで傾斜をつけない
+        // ため、平地/丘陵/山岳の境界で線路や建物が地形に浮く/めり込む見た目を防ぐ）。
+        // かつ各区間の高さ幅をgetTerrainColorが前提とする範囲（平地2-6, 丘陵6-8, 山岳8-10）と
+        // 一致させることで、tから導く色の正規化もそのまま有効にする
+        const combinedForHeight = Math.max(combined, height * HILL_THRESHOLD);
+        tileFieldHeight = heightFromCombined(combinedForHeight);
       }
 
       map[x][z] = {
