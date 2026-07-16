@@ -174,6 +174,7 @@ export function generateShowcaseData(map: MapTile[][]): ShowcaseData {
       state: 'running',
       waitTimer: 0,
       materialLoad: 0,
+      terminated: false,
     };
     trains.set(train.id, train);
     trainNum++;

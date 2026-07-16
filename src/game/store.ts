@@ -26,7 +26,7 @@ import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RAT
 import { generateTerrain } from './terrain.ts';
 import { advanceTime, calculateDailyFinance } from './simulation.ts';
 import { SCENARIOS, checkObjectives } from './scenarios.ts';
-import { advanceTrainPosition, getStationAtPosition } from './trackUtils.ts';
+import { advanceTrainPosition, getStationAtPosition, reverseTrainSchedule } from './trackUtils.ts';
 import { developCity, levelUpBuildings, calculatePopulation, calculateWorkforce } from './cityDevelopment.ts';
 import { processMaterialProduction, updateLandValues, generateRoads } from './materials.ts';
 import { saveToLocalStorage, loadFromLocalStorage } from './saveLoad.ts';
@@ -186,11 +186,31 @@ export const useGameStore = create<GameState>((set, get) => ({
 
       // Check if train arrived at a station
       const stationAt = getStationAtPosition(updatedTrain, state.tracks, state.stations);
-      if (stationAt && train.schedule.stops.length > 0) {
-        const nextIdx = (train.schedule.currentStopIndex + 1) % train.schedule.stops.length;
-        const nextStop = train.schedule.stops[nextIdx];
+      const stops = train.schedule.stops;
+      if (stationAt && stops.length > 0) {
+        const nextIdx = (train.schedule.currentStopIndex + 1) % stops.length;
+        const nextStop = stops[nextIdx];
         if (nextStop && nextStop.stationId === stationAt.id) {
-          if (nextStop.action === 'stop') {
+          const isFinalStop = nextIdx === stops.length - 1;
+          const loopMode = train.schedule.loopMode;
+
+          if (isFinalStop && loopMode === 'one-way') {
+            // 片道運行: 終端駅に到達したら運行終了。手動再出発（restartTerminatedTrain）まで停止したまま
+            updatedTrain = {
+              ...updatedTrain,
+              state: 'stopped',
+              waitTimer: 0,
+              terminated: true,
+              schedule: { ...train.schedule, currentStopIndex: nextIdx },
+            };
+          } else if (isFinalStop && loopMode === 'bounce' && stops.length > 1) {
+            // 往復運行: 終端駅で停車リストを反転し、そのまま折り返して逆順に辿る
+            const reversedSchedule = reverseTrainSchedule({ ...train.schedule, currentStopIndex: nextIdx });
+            updatedTrain = nextStop.action === 'stop'
+              ? { ...updatedTrain, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule }
+              : { ...updatedTrain, schedule: reversedSchedule };
+          } else if (nextStop.action === 'stop') {
+            // 循環運行(loop)、および往復/片道の途中駅は従来通り配列を巡回する
             updatedTrain = {
               ...updatedTrain,
               state: 'waiting',
@@ -211,7 +231,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           updatedTrain.currentSegmentId !== train.currentSegmentId ||
           updatedTrain.direction !== train.direction ||
           updatedTrain.state !== train.state ||
-          updatedTrain.waitTimer !== train.waitTimer) {
+          updatedTrain.waitTimer !== train.waitTimer ||
+          updatedTrain.terminated !== train.terminated) {
         newTrains.set(id, updatedTrain);
         trainsUpdated = true;
       }
@@ -573,6 +594,22 @@ export const useGameStore = create<GameState>((set, get) => ({
     newTrains.set(trainId, { ...train, schedule });
     set({ trains: newTrains });
     get().addNotification(`${train.name}のダイヤを更新しました`, 'success');
+  },
+  restartTerminatedTrain: (trainId: string) => {
+    const state = get();
+    const train = state.trains.get(trainId);
+    if (!train || !train.terminated) return;
+    const newTrains = new Map(state.trains);
+    newTrains.set(trainId, {
+      ...train,
+      state: 'running',
+      terminated: false,
+      waitTimer: 0,
+      direction: train.direction === 1 ? -1 : 1,
+      schedule: reverseTrainSchedule(train.schedule),
+    });
+    set({ trains: newTrains });
+    get().addNotification(`${train.name}が反対方向へ再出発しました`, 'success');
   },
   setConstructionMode: (mode: boolean) => set({ constructionMode: mode }),
   setScenarioId: (id: string | null) => set({ scenarioId: id }),

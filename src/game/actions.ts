@@ -115,7 +115,8 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
       const tile1 = map[seg.sx]?.[seg.sz];
       const tile2 = map[seg.ex]?.[seg.ez];
       if (!tile1 || !tile2) { get().addNotification('マップ外には敷設できません', 'error'); return; }
-      if (elevation >= 0 && (tile1.terrain === 'water' || tile2.terrain === 'water')) {
+      // 水域には地上・高架・地下いずれの線路も敷設不可（地下線路も水底は貫通できない）
+      if (tile1.terrain === 'water' || tile2.terrain === 'water') {
         get().addNotification('水上に線路は敷設できません', 'error'); return;
       }
     }
@@ -124,6 +125,8 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
     for (const seg of segmentDefs) {
       let exists = false;
       for (const existing of tracks.values()) {
+        // elevationが異なれば地上・高架・地下として共存できるため別区間として扱う
+        if (existing.elevation !== elevation) continue;
         if ((existing.startX === seg.sx && existing.startZ === seg.sz && existing.endX === seg.ex && existing.endZ === seg.ez) ||
             (existing.startX === seg.ex && existing.startZ === seg.ez && existing.endX === seg.sx && existing.endZ === seg.sz)) {
           exists = true; break;
@@ -150,7 +153,7 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
       const id = genId('track');
       const trackSeg: TrackSegment = {
         id, startX: seg.sx, startZ: seg.sz, endX: seg.ex, endZ: seg.ez,
-        type: 'straight', direction: seg.dir, elevation: Math.max(0, elevation),
+        type: 'straight', direction: seg.dir, elevation,
       };
       newTracks.set(id, trackSeg);
       if (map[seg.sx]?.[seg.sz]) map[seg.sx][seg.sz].trackIds.push(id);
@@ -319,6 +322,24 @@ export function createBuildStation(set: SetFn, get: GetFn) {
       sType = toolMap[selectedTool] || 'ground_small';
     }
 
+    // 線路の高度(elevation)と駅種別の整合性チェック:
+    // 地下線路のみが通るタイルには地下鉄駅のみ、高架線路のみが通るタイルには高架駅のみ建設可能
+    const trackElevations = new Set(tile.trackIds.map(tid => state.tracks.get(tid)?.elevation ?? 0));
+    const onlyUnderground = trackElevations.size === 1 && trackElevations.has(-1);
+    const onlyElevated = trackElevations.size > 0 && ![...trackElevations].some(e => e <= 0);
+    if (onlyUnderground && sType !== 'underground') {
+      get().addNotification('地下線路の上には地下鉄駅のみ建設できます', 'error'); return;
+    }
+    if (!onlyUnderground && sType === 'underground') {
+      get().addNotification('地下鉄駅は地下線路の上にのみ建設できます', 'error'); return;
+    }
+    if (onlyElevated && sType !== 'elevated') {
+      get().addNotification('高架線路の上には高架駅のみ建設できます', 'error'); return;
+    }
+    if (!onlyElevated && sType === 'elevated') {
+      get().addNotification('高架駅は高架線路の上にのみ建設できます', 'error'); return;
+    }
+
     const cost = STATION_COSTS[sType];
     if (!state.constructionMode && finance.cash < cost) {
       get().addNotification('資金が不足しています', 'error'); return;
@@ -372,7 +393,7 @@ export function createPlaceTrain(set: SetFn, get: GetFn) {
       direction: 1, passengers: Math.min(trainType.capacity, stations.size * 50),
       capacity: trainType.capacity,
       schedule: { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
-      state: 'running', waitTimer: 0, materialLoad: 0,
+      state: 'running', waitTimer: 0, materialLoad: 0, terminated: false,
     };
     const newTrains = new Map(trains);
     newTrains.set(id, train);

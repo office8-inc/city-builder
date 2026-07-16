@@ -59,6 +59,9 @@ export interface Train {
   state: 'running' | 'stopped' | 'waiting';
   waitTimer: number;
   materialLoad: number;
+  // 片道(one-way)運行で終端駅に到達し運行終了した状態。state==='stopped'と併用し、
+  // 「信号待ち等の一時停止」と区別する。手動再出発（restartTerminatedTrain）まで停止したまま
+  terminated: boolean;
 }
 
 export interface TrainSchedule {
@@ -367,6 +370,8 @@ export interface GameState {
   placeSignal: (x: number, z: number) => void;
   setSelectedTrainId: (id: string | null) => void;
   updateTrainSchedule: (trainId: string, schedule: TrainSchedule) => void;
+  // 片道運行で終着(terminated)した列車を、進行方向を反転させて再出発させる
+  restartTerminatedTrain: (trainId: string) => void;
   setConstructionMode: (mode: boolean) => void;
   setScenarioId: (id: string | null) => void;
   setWeatherType: (type: WeatherType) => void;

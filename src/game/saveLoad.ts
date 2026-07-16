@@ -101,6 +101,12 @@ interface SerializedStateV3 {
 
 type SerializedState = SerializedStateV1 | SerializedStateV2 | SerializedStateV3;
 
+// v1.0（terminated追加）より前のセーブにはtrain.terminatedが存在しないため、
+// ロード時にデフォルト値(false)で補完する
+function normalizeTrain(t: Train): Train {
+  return { ...t, terminated: (t as unknown as Partial<Train>).terminated ?? false };
+}
+
 function getSaveKey(slot?: number): string {
   if (slot !== undefined && slot > 0) return `atrain-city-save-${slot}`;
   return 'atrain-city-save';
@@ -185,12 +191,12 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
 
   const trains = new Map<string, Train>();
   for (const [id, t] of data.trains) {
-    trains.set(id, {
+    trains.set(id, normalizeTrain({
       ...t,
       waitTimer: (t as unknown as Partial<Train>).waitTimer ?? 0,
       materialLoad: (t as unknown as Partial<Train>).materialLoad ?? 0,
       schedule: (t as unknown as Partial<Train>).schedule ?? { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
-    });
+    }));
   }
 
   const stations = new Map<string, Station>();
@@ -241,7 +247,7 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
     map: data.map,
     tracks: new Map(data.tracks),
     stations: new Map(data.stations),
-    trains: new Map(data.trains),
+    trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
     signals: new Map(data.signals),
@@ -276,7 +282,7 @@ function loadV3(data: SerializedStateV3): Partial<GameState> {
     map: data.map,
     tracks: new Map(data.tracks),
     stations: new Map(data.stations),
-    trains: new Map(data.trains),
+    trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
     signals: new Map(data.signals),

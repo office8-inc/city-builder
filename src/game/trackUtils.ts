@@ -1,9 +1,11 @@
-import type { TrackSegment, Train, Station, Signal } from './types.ts';
+import type { TrackSegment, Train, Station, Signal, TrainSchedule } from './types.ts';
 import { isDiagonal } from './constants.ts';
 import { getSignalSpeedMultiplier } from './signals.ts';
 
 /**
  * Find all segments that share an endpoint with the given segment.
+ * 地上(0)・高架(1+)・地下(-1)は同一タイル座標を共有しうるが、レイヤーが異なる
+ * 線路同士は物理的に接続しないため、同じelevationの区間のみを接続対象とする。
  */
 export function getConnectedSegments(
   trackId: string,
@@ -15,6 +17,7 @@ export function getConnectedSegments(
   const connected: TrackSegment[] = [];
   for (const [id, other] of tracks) {
     if (id === trackId) continue;
+    if (other.elevation !== segment.elevation) continue;
     if (
       (other.startX === segment.startX && other.startZ === segment.startZ) ||
       (other.startX === segment.endX && other.startZ === segment.endZ) ||
@@ -49,6 +52,8 @@ export function getNextSegment(
 
   for (const [id, other] of tracks) {
     if (id === currentId) continue;
+    // 同じ座標でも地上/高架/地下でレイヤーが異なる区間には乗り入れない
+    if (other.elevation !== current.elevation) continue;
     if (other.startX === exitX && other.startZ === exitZ) {
       candidates.push({ segment: other, enterFromStart: true });
     } else if (other.endX === exitX && other.endZ === exitZ) {
@@ -148,6 +153,21 @@ function getNextTargetStationId(train: Train): string | undefined {
   if (train.schedule.stops.length === 0) return undefined;
   const nextIdx = (train.schedule.currentStopIndex + 1) % train.schedule.stops.length;
   return train.schedule.stops[nextIdx]?.stationId;
+}
+
+/**
+ * 停車駅リストを逆順にし、現在位置(currentStopIndex)を反転後の配列の先頭(0)へ
+ * 巻き戻す。「往復(bounce)」モードで終端駅に到達した際の折り返しと、
+ * 「片道(one-way)」モードで終着した列車を手動で再出発させる際、両方から共通利用する。
+ * 例: [A,B,C,D] で D(末尾)に到達 → [D,C,B,A], currentStopIndex=0（=現在地D）
+ *     以降 (currentStopIndex+1)%length の通常ルーティングが自然にCへ向かう。
+ */
+export function reverseTrainSchedule(schedule: TrainSchedule): TrainSchedule {
+  return {
+    ...schedule,
+    stops: [...schedule.stops].reverse(),
+    currentStopIndex: 0,
+  };
 }
 
 /**

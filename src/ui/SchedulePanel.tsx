@@ -5,6 +5,7 @@ import type { ScheduleStop, Train } from '../game/types.ts';
 function TrainScheduleEditor({ train }: { train: Train }) {
   const stations = useGameStore(s => s.stations);
   const updateSchedule = useGameStore(s => s.updateTrainSchedule);
+  const restartTerminatedTrain = useGameStore(s => s.restartTerminatedTrain);
   const stationList = useMemo(() => Array.from(stations.values()), [stations]);
 
   const [editStops, setEditStops] = useState<ScheduleStop[]>(train.schedule.stops);
@@ -45,7 +46,20 @@ function TrainScheduleEditor({ train }: { train: Train }) {
         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: train.color }} />
         <span className="font-medium text-sm">{train.name}</span>
         <span className="text-white/40 text-[10px]">{train.type}</span>
+        {train.terminated && (
+          <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-500/40 text-red-200">終着</span>
+        )}
       </div>
+
+      {/* 片道運行で終着した列車: 再出発ボタンを表示（進行方向を反転して運行再開） */}
+      {train.terminated && (
+        <button
+          onClick={() => restartTerminatedTrain(train.id)}
+          className="w-full mb-2 py-1.5 rounded-lg text-xs bg-orange-600/60 hover:bg-orange-600/80 text-white font-medium transition-all"
+        >
+          反対方向へ再出発
+        </button>
+      )}
 
       {/* Loop mode */}
       <div className="flex gap-1 text-[10px]">

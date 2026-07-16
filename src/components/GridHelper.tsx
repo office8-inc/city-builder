@@ -25,11 +25,9 @@ export function GridOverlay() {
       case 'track_straight':
       case 'track_diagonal':
       case 'track_elevated':
-        // createPlaceTrack: 水上には敷設不可（地下線路は水上も可）
-        canPlace = tile.terrain !== 'water';
-        break;
       case 'track_underground':
-        canPlace = true;
+        // createPlaceTrack: 水上にはどの高度の線路も敷設不可
+        canPlace = tile.terrain !== 'water';
         break;
       case 'track_remove':
         // createRemoveTrack: 線路があり、駅が無いタイルのみ撤去可
@@ -40,10 +38,17 @@ export function GridOverlay() {
       case 'station_elevated':
       case 'station_terminal':
       case 'station_underground':
-      case 'station_depot':
-        // createBuildStation: 線路があり、駅が無いタイルのみ建設可
-        canPlace = tile.trackIds.length > 0 && !tile.stationId;
+      case 'station_depot': {
+        // createBuildStation: 線路があり、駅が無く、線路の高度と駅種別が整合するタイルのみ建設可
+        if (tile.trackIds.length === 0 || tile.stationId) { canPlace = false; break; }
+        const elevations = new Set(tile.trackIds.map(tid => tracks.get(tid)?.elevation ?? 0));
+        const onlyUnderground = elevations.size === 1 && elevations.has(-1);
+        const onlyElevated = elevations.size > 0 && ![...elevations].some(e => e <= 0);
+        if (onlyUnderground) canPlace = selectedTool === 'station_underground';
+        else if (onlyElevated) canPlace = selectedTool === 'station_elevated';
+        else canPlace = selectedTool !== 'station_underground' && selectedTool !== 'station_elevated';
         break;
+      }
       case 'train_place':
         // createPlaceTrain: 駅があるタイルのみ配置可（Scene.tsx側の実装に準拠）
         canPlace = tile.stationId !== null;

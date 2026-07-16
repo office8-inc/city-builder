@@ -66,9 +66,13 @@ function getAdjacentSegmentIds(
   x: number, z: number, excludeId: string,
   tracks: Map<string, TrackSegment>
 ): string[] {
+  // 地上・高架・地下は同じ座標を共有しうるが物理的に繋がっていないため、
+  // 基準区間(excludeId)と同じelevationの区間のみ隣接扱いにする
+  const excludeElevation = tracks.get(excludeId)?.elevation ?? 0;
   const result: string[] = [];
   for (const [id, seg] of tracks) {
     if (id === excludeId) continue;
+    if (seg.elevation !== excludeElevation) continue;
     if ((seg.startX === x && seg.startZ === z) ||
         (seg.endX === x && seg.endZ === z)) {
       result.push(id);
@@ -95,6 +99,9 @@ export function getSignalSpeedMultiplier(
 
   for (const signal of signals.values()) {
     if (signal.x === exitX && signal.z === exitZ) {
+      // 同一座標でも地上/高架/地下でレイヤーが異なる信号は無関係なので無視する
+      const signalSeg = tracks.get(signal.segmentId);
+      if (signalSeg && signalSeg.elevation !== seg.elevation) continue;
       switch (signal.state) {
         case 'red': return 0;
         case 'yellow': return 0.5;

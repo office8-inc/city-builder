@@ -109,14 +109,72 @@ test.describe('Infrastructure: Track & Station Placement', () => {
       s.buildStation(15, 25, 'ground_small', 'Small');
       s.buildStation(20, 25, 'ground_large', 'Large');
       s.buildStation(25, 25, 'terminal', 'Terminal');
-      s.buildStation(30, 25, 'elevated', 'Elevated');
       s.buildStation(25, 15, 'depot', 'Depot');
+      // 高架駅は高架線路の上にのみ建設できるため、既存の地上線路網とは別の場所に
+      // 専用の高架線路を敷設してから建てる
+      s.setSelectedTool('track_elevated');
+      s.placeTrack(30, 40, 31, 40);
+      s.setSelectedTool('none');
+      s.buildStation(30, 40, 'elevated', 'Elevated');
       const stations = Array.from(window.__gameStore.getState().stations.values());
       return stations.map(st => ({ name: st.name, type: st.type }));
     })()`);
     expect(result.length).toBe(5);
     expect(result.map((s: any) => s.type)).toContain('terminal');
     expect(result.map((s: any) => s.type)).toContain('depot');
+    expect(result.map((s: any) => s.type)).toContain('elevated');
+  });
+
+  test('underground track coexists with ground track on the same tile, but not over water', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 地上線路を敷設
+      s.setSelectedTool('track_straight');
+      s.placeTrack(10, 25, 15, 25);
+      // 同じタイル区間へ地下線路を重ねて敷設 → 地上・地下が共存できることを確認
+      s.setSelectedTool('track_underground');
+      s.placeTrack(10, 25, 15, 25);
+
+      const segs = Array.from(window.__gameStore.getState().tracks.values())
+        .filter(t => t.startZ === 25 && t.endZ === 25 && t.startX >= 10 && t.endX <= 15);
+      const groundCount = segs.filter(t => t.elevation === 0).length;
+      const undergroundCount = segs.filter(t => t.elevation === -1).length;
+
+      // マップ上から水域タイルを探し、地下線路も水上には敷設できないことを確認
+      const map = window.__gameStore.getState().map;
+      let waterTile = null;
+      for (let x = 1; x < map.length - 1 && !waterTile; x++) {
+        for (let z = 1; z < map[x].length - 1; z++) {
+          if (map[x][z].terrain === 'water' && map[x + 1][z].terrain === 'water') {
+            waterTile = { x, z };
+            break;
+          }
+        }
+      }
+
+      let waterBlocked = true;
+      let foundWater = false;
+      if (waterTile) {
+        foundWater = true;
+        const before = window.__gameStore.getState().tracks.size;
+        s.setSelectedTool('track_underground');
+        s.placeTrack(waterTile.x, waterTile.z, waterTile.x + 1, waterTile.z);
+        const after = window.__gameStore.getState().tracks.size;
+        waterBlocked = after === before;
+      }
+
+      return { groundCount, undergroundCount, foundWater, waterBlocked };
+    })()`);
+
+    expect(result.groundCount).toBeGreaterThan(0);
+    expect(result.undergroundCount).toBeGreaterThan(0);
+    expect(result.groundCount).toBe(result.undergroundCount);
+    if (result.foundWater) {
+      expect(result.waterBlocked).toBe(true);
+    }
   });
 
   test('place trains at stations', async ({ page }) => {

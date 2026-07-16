@@ -1,10 +1,14 @@
 import { useRef, useMemo, Suspense } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF, Clone } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
+import { cloneWithOwnMaterials, setUndergroundTint } from '../utils/undergroundVisual.ts';
+
+// 地下線路(elevation===-1)の描画は地面から約0.5下げる（Tracks.tsxの地下線路オフセットと合わせる）
+const UNDERGROUND_Y_OFFSET = -0.5;
 
 const BASE = import.meta.env.BASE_URL;
 const T = (name: string) => BASE + `models/kenney-trains/${name}.glb`;
@@ -38,12 +42,18 @@ allPaths.forEach(p => useGLTF.preload(p));
 
 function GLBTrainCar({ modelPath }: { modelPath: string }) {
   const { scene } = useGLTF(modelPath);
+  // 地下区間走行中は半透明トーンへ動的に切り替える必要があるため、マウント時に
+  // マテリアルを個別複製した専有コピーを作る（Cloneのデフォルト共有材質のままだと
+  // 同じ車両モデルを使う他列車まで巻き込んで透明化してしまう）
+  const ownScene = useMemo(() => cloneWithOwnMaterials(scene, { castShadow: true }), [scene]);
   // Kenneyモデルのデフォルトスケールに合わせる（線路Z=0.25比率）
-  return <Clone object={scene} scale={0.25} castShadow />;
+  return <primitive object={ownScene} scale={0.25} />;
 }
 
 function TrainMesh({ trainId }: { trainId: string }) {
   const groupRef = useRef<THREE.Group>(null);
+  // 地下区間への出入りを検知するための直近フレームの状態（毎フレームのtraverseを避けるため）
+  const wasUndergroundRef = useRef(false);
   const train = useGameStore(s => s.trains.get(trainId));
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
@@ -80,15 +90,22 @@ function TrainMesh({ trainId }: { trainId: string }) {
     const h1 = tile1 ? getTileWorldHeight(tile1) : 0;
     const h2 = tile2 ? getTileWorldHeight(tile2) : 0;
     const p = t.positionOnSegment;
+    const isUnderground = segment.elevation === -1;
     groupRef.current.position.set(
       w1.x + (w2.x - w1.x) * p,
-      h1 + (h2 - h1) * p + 0.25,
+      h1 + (h2 - h1) * p + 0.25 + (isUnderground ? UNDERGROUND_Y_OFFSET : 0),
       w1.z + (w2.z - w1.z) * p
     );
     const dx = w2.x - w1.x;
     const dz = w2.z - w1.z;
     const angle = Math.atan2(dx, dz);
     groupRef.current.rotation.y = t.direction === 1 ? angle : angle + Math.PI;
+
+    // 地下区間への出入りが起きたときだけマテリアルを半透明トーンへ切り替える
+    if (isUnderground !== wasUndergroundRef.current) {
+      wasUndergroundRef.current = isUnderground;
+      setUndergroundTint(groupRef.current, isUnderground);
+    }
   });
 
   if (!train) return null;

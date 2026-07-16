@@ -4,6 +4,7 @@ import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import { isDiagonal } from '../game/constants.ts';
+import { tintUndergroundStatic } from '../utils/undergroundVisual.ts';
 import type { Signal, Direction, MapTile } from '../game/types.ts';
 
 const BASE = import.meta.env.BASE_URL;
@@ -28,6 +29,7 @@ interface TrackTileData {
   rotY: number;
   scaleX: number;
   isElevated: boolean;
+  isUnderground: boolean;
 }
 
 function computeSegmentData(
@@ -43,6 +45,7 @@ function computeSegmentData(
   const avgH = (h1 + h2) / 2;
   const diagonal = isDiagonal(direction);
   const elevated = elevation > 0;
+  const underground = elevation === -1;
 
   const dx = endX - startX;
   const dz = endZ - startZ;
@@ -54,7 +57,7 @@ function computeSegmentData(
   else if (dx < 0 && dz > 0) rot = 3 * Math.PI / 4;
   else if (dx < 0 && dz < 0) rot = -3 * Math.PI / 4;
 
-  const elevationOffset = elevated ? 1.0 : 0;
+  const elevationOffset = elevated ? 1.0 : underground ? -0.5 : 0;
 
   return {
     cx: (w1.x + w2.x) / 2,
@@ -63,12 +66,20 @@ function computeSegmentData(
     rotY: rot,
     scaleX: diagonal ? Math.SQRT2 : 1,
     isElevated: elevated,
+    isUnderground: underground,
   };
 }
 
 function TrackModel({ data }: { data: TrackTileData }) {
   const modelPath = data.isElevated ? RAIL_STRAIGHT : TRACK_STRAIGHT;
   const { scene } = useGLTF(modelPath);
+  // 地下区間は半透明の暗色トーンで描画（トンネル演出）。マテリアルは
+  // 複製元GLTFシーンから独立させたコピーへ焼き込むため、地上区間の
+  // 同一モデルには一切影響しない
+  const renderScene = useMemo(
+    () => (data.isUnderground ? tintUndergroundStatic(scene) : scene),
+    [scene, data.isUnderground],
+  );
 
   // Model BBox: X[-0.5,0.5] Y[-1,-0.9] Z[0,4]
   // Y origin is at -1 (not 0), so we offset position.y by scaleY*1.0 to bring
@@ -78,7 +89,7 @@ function TrackModel({ data }: { data: TrackTileData }) {
   return (
     <group position={[data.cx, data.cy + 0.02, data.cz]} rotation={[0, data.rotY + Math.PI / 2, 0]}>
       <Clone
-        object={scene}
+        object={renderScene}
         position={[0, 1.2, -2 * zScale]}
         scale={[0.55, 1.2, zScale]}
         castShadow
