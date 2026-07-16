@@ -41,10 +41,11 @@ src/
 │   ├── cityDevelopment.ts # 自動都市発展、相性システム、人口計算
 │   ├── terrain.ts        # 地形生成（Simplex Noise）、季節別カラー
 │   ├── trackUtils.ts     # 線路接続、信号対応移動、分岐ルーティング
-│   ├── materials.ts      # 資材生産、地価計算、道路自動生成
+│   ├── materials.ts      # 資材生産・輸送（貨物積載/荷降ろし）、地価計算、道路自動生成
 │   ├── signals.ts        # ブロック信号システム
-│   ├── scenarios.ts      # シナリオ定義（3本）
-│   └── saveLoad.ts       # セーブ/ロード（3スロット、バージョン管理）
+│   ├── scenarios.ts      # シナリオ定義（3本）＋目標達成判定
+│   ├── milestones.ts     # マイルストーン（軽量実績）定義と判定
+│   └── saveLoad.ts       # セーブ/ロード（3スロット、v1→v4マイグレーション）
 ├── ui/                   # UIコンポーネント（2D）
 │   ├── HUD.tsx           # メインHUDレイアウト
 │   ├── Toolbar.tsx       # ツールバー（カテゴリ式）
@@ -53,10 +54,12 @@ src/
 │   ├── SchedulePanel.tsx # ダイヤ設定UI
 │   ├── SettingsPanel.tsx # 設定画面（音量、ショートカット一覧）
 │   ├── ScenarioPanel.tsx # シナリオ目標進捗表示
+│   ├── ConfirmDialog.tsx # 汎用確認ダイアログ（撤去・ロード時）
 │   ├── MapEditor.tsx     # マップエディタ
 │   └── ...               # その他（通知、ミニマップ、建物情報等）
 └── utils/                # ユーティリティ
     ├── grid.ts           # グリッド座標変換
+    ├── undergroundVisual.ts # 地下線路/列車の半透明表示ヘルパー
     └── audio.ts          # Web Audio API サウンドマネージャ
 ```
 
@@ -69,16 +72,18 @@ src/
 
 ### 2. 線路・駅・列車
 - **線路**: 8方向（N/NE/E/SE/S/SW/W/NW）、斜めはコスト1.5倍・長さ√2
-- **駅**: 6種類（地上小/地上大/高架/始発/地下鉄/車両基地）
+- **地下線路**: elevation=-1、費用3倍。建物・道路のあるタイルや山岳（トンネル）にも敷設可、水域は不可。半透明の暗色トーンで描画。接続・信号は同一elevation同士のみ
+- **駅**: 6種類（地上小/地上大/高架/始発/地下鉄/車両基地）。地下線路上には地下鉄駅のみ、高架線路上には高架駅のみ建設可
 - **列車**: 7種類（普通/近郊/急行/気動車/貨物/新幹線/蒸気機関車）
-- **ダイヤ**: 駅ごとに停車/通過/待機時間設定、循環/往復/片道モード
+- **ダイヤ**: 駅ごとに停車/通過/待機時間設定。運行パターン loop/bounce/one-way が走行に反映（one-wayは終着で停止→ダイヤパネルから再出発可）
 - **信号**: ブロック信号システム（赤/黄/緑）、赤信号で自動停止
-- **分岐**: ダイヤの次駅方向に基づいてルーティング
+- **分岐**: ダイヤの次駅方向に基づいてルーティング（専用の分岐器ツールは無し。線路の重ね敷きで分岐点が形成される）
 
 ### 3. 都市発展
 - 駅の乗降客数に基づく発展圧力（距離減衰あり）
 - 7業種の相性システム（`SYNERGY_MATRIX`）
-- 建物自動レベルアップ（レベル4以上は近隣資材が必要）
+- 建物自動レベルアップ（レベル4以上は半径3タイル以内の資材ストックを消費して昇格）
+- **資材輸送**: 工場が資材生産→貨物列車が駅周辺（半径3）で積載（上限20）→別の駅で荷降ろし（輸送収入 50万円/単位、`IncomeBreakdown.materialTransport`）
 - ラッシュアワー乗数: 7-9時 ×2.5、12-13時 ×1.3、17-20時 ×2.2
 
 ### 4. 経営システム
@@ -86,7 +91,12 @@ src/
 - **子会社**: 15種類（工場、ホテル、デパート、発電所 等）
 - **土地売買**: 地価ベースの購入/売却、所有地からの不動産収入
 - **株価**: 四半期EPS × P/E倍率（人口依存）
-- **破産**: 資金<0 かつ 負債>最大負債比率 で経営破綻
+- **破産**: 資金<0 かつ 負債>最大負債比率 で経営破綻。1回限り「緊急支援」（+2億円、元本2.4億・年利8%・10年の救済融資）で再建可、2回目は確定ゲームオーバー
+- **マイルストーン**: 人口・駅数・資金等の節目12種を達成時に一度だけ通知（`milestones.ts`、セーブに達成済みSetを保持）
+
+### 4b. シナリオ進行
+- 月次で目標達成判定: 全達成→`scenario_clear`（クリア画面）、制限時間超過→`scenario_failed`（失敗画面、フリープレイ続行可）
+- 破産・クリア・失敗画面の表示中はシミュレーション停止
 
 ### 5. 季節・天候
 - 四季自動判定（月ベース）: 春/夏/秋/冬
@@ -117,7 +127,9 @@ ownedLand        // Set<string> — 所有地
 gameTime         // { year, month, day, hour, minute }
 season           // 'spring' | 'summer' | 'autumn' | 'winter'
 weatherType      // 'clear' | 'cloudy' | 'rain'
-gamePhase        // 'title' | 'tutorial' | 'playing' | 'gameover' | ...
+gamePhase        // 'title' | 'tutorial' | 'playing' | 'gameover' | 'scenario_clear' | 'scenario_failed' | ...
+achievedMilestones // Set<string> — 達成済みマイルストーン
+bailoutUsed      // boolean — 緊急支援の使用済みフラグ（1回限り）
 ```
 
 ## ゲームモード
@@ -141,7 +153,8 @@ gamePhase        // 'title' | 'tutorial' | 'playing' | 'gameover' | ...
   - 高架柱: Kenney Props supports_high
   - 森林: Kenney Nature（detail_forestA）
   - Kenney GLBモデルは外部テクスチャ `Textures/colormap.png` を参照（各モデルディレクトリに配置済み）
-- InstancedMeshで大量オブジェクトのパフォーマンス確保
+- InstancedMeshは雨粒子等のパーティクルで使用（建物・線路・列車はGLBの`<Clone>`個別描画。半透明化など個体別のマテリアル調整時は `utils/undergroundVisual.ts` の専有クローンを使い共有マテリアル汚染を防ぐこと）
+- ビルドは manualChunks で vendor-three / vendor-react を分離（main約168KB）
 - 金額は整数で管理（浮動小数点誤差を回避）
 - グリッド座標: (x, z)、yは高さ方向
 - エンティティ更新は必ずイミュータブルに（`new Map` + スプレッド演算子）
