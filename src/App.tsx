@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { GameScene } from './components/Scene.tsx';
 import { HUD } from './ui/HUD.tsx';
 import { TitleScreen } from './ui/TitleScreen.tsx';
@@ -8,6 +9,7 @@ import { MapEditor } from './ui/MapEditor.tsx';
 import { useGameStore } from './game/store.ts';
 import { formatMoney } from './game/constants.ts';
 import { SCENARIOS, checkObjectives } from './game/scenarios.ts';
+import { resumeAudio, startAmbient, stopAmbient } from './utils/audio.ts';
 
 function GameOverScreen() {
   const finance = useGameStore(s => s.finance);
@@ -167,6 +169,30 @@ function ScenarioFailedScreen() {
 
 export default function App() {
   const gamePhase = useGameStore(s => s.gamePhase);
+
+  // ブラウザのautoplayポリシー対応: 最初のユーザー操作でAudioContextを再開する
+  useEffect(() => {
+    const handleFirstGesture = () => {
+      resumeAudio();
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+    window.addEventListener('pointerdown', handleFirstGesture, { once: true });
+    window.addEventListener('keydown', handleFirstGesture, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstGesture);
+      window.removeEventListener('keydown', handleFirstGesture);
+    };
+  }, []);
+
+  // プレイ中（本編/チュートリアル）のみ環境音を鳴らす
+  useEffect(() => {
+    if (gamePhase === 'playing' || gamePhase === 'tutorial') {
+      startAmbient();
+    } else {
+      stopAmbient();
+    }
+  }, [gamePhase]);
 
   return (
     <div className="w-full h-full relative">

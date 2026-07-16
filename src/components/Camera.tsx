@@ -6,6 +6,7 @@ import { GRID_SIZE } from '../game/constants.ts';
 import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
+import { startTrainSound, stopTrainSound } from '../utils/audio.ts';
 
 function FreeCamera() {
   const halfGrid = GRID_SIZE / 2;
@@ -64,12 +65,27 @@ function FollowCamera() {
   const { camera } = useThree();
   const followTrainId = useGameStore(s => s.followTrainId);
   const followMode = useGameStore(s => s.followMode);
+  // 直前に再生した走行音の速度（同じ値なら鳴らし直さない。毎フレーム呼ぶと音が途切れるため）
+  const lastTrainSoundSpeedRef = useRef<number | null>(null);
+
+  // 追尾解除・列車切替時は走行音をリセットして止める
+  useEffect(() => {
+    lastTrainSoundSpeedRef.current = null;
+    return () => stopTrainSound();
+  }, [followTrainId]);
 
   useFrame(() => {
     if (!followTrainId) return;
     const { trains, tracks, map } = useGameStore.getState();
     const train = trains.get(followTrainId);
     if (!train) return;
+
+    // 列車走行音: 停車中(state !== 'running')は無音、走行中は速度に応じたクリケティクラック音
+    const soundSpeed = train.state === 'running' ? train.speed : 0;
+    if (soundSpeed !== lastTrainSoundSpeedRef.current) {
+      if (soundSpeed > 0) startTrainSound(soundSpeed); else stopTrainSound();
+      lastTrainSoundSpeedRef.current = soundSpeed;
+    }
 
     const segment = tracks.get(train.currentSegmentId);
     if (!segment) return;

@@ -23,6 +23,7 @@ import {
   isDiagonal,
   formatMoney,
 } from './constants.ts';
+import { playBuildSound } from '../utils/audio.ts';
 
 let nextEntityId = 1;
 export function genId(prefix: string): string {
@@ -177,6 +178,7 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
     const updates: Partial<GameState> = { tracks: newTracks, finance: { ...finance, cash: newCash } };
     if (forestCleared) updates.map = map.map(row => [...row]);
     set(updates);
+    playBuildSound();
     get().addNotification(`線路を${newSegments.length}区間敷設 (${formatMoney(cost)})`, 'success');
   };
 }
@@ -381,6 +383,7 @@ export function createBuildStation(set: SetFn, get: GetFn) {
     // Roads.tsx側の再計算トリガーとしてroadRevisionをインクリメントする
     set({ stations: newStations, finance: { ...finance, cash: newCash }, roadRevision: state.roadRevision + 1 });
 
+    playBuildSound();
     get().addNotification(`${name}駅を建設 (${formatMoney(cost)})`, 'success');
   };
 }
@@ -414,6 +417,7 @@ export function createPlaceTrain(set: SetFn, get: GetFn) {
     newTrains.set(id, train);
     const newCash = state.constructionMode ? finance.cash : finance.cash - trainType.cost;
     set({ trains: newTrains, finance: { ...finance, cash: newCash } });
+    playBuildSound();
     get().addNotification(`${train.name}を配置 (${formatMoney(trainType.cost)})`, 'success');
   };
 }
@@ -444,6 +448,7 @@ export function createBuildSubsidiary(set: SetFn, get: GetFn) {
     tile.subsidiaryId = id;
     const newCash = state.constructionMode ? finance.cash : finance.cash - costInfo.build;
     set({ subsidiaries: newSubs, finance: { ...finance, cash: newCash } });
+    playBuildSound();
     get().addNotification(`${sub.name}を建設 (${formatMoney(costInfo.build)})`, 'success');
   };
 }

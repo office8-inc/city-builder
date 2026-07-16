@@ -38,8 +38,11 @@ import {
   setNextEntityId,
 } from './actions.ts';
 import { generateShowcaseData } from './showcase.ts';
+import { playNotificationSound, playErrorSound } from '../utils/audio.ts';
 
 let nextNotificationId = 1;
+// 通知音の多重再生防止（短時間に複数の通知が発生してもまとめて1回だけ鳴らす）
+let lastNotificationSoundAt = 0;
 
 // Train movement speed: position units per tick (each tick = 10 game minutes)
 const TRAIN_MOVE_SPEED = 0.03;
@@ -148,6 +151,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       notifications: [...state.notifications.slice(-4), { id, message, timestamp: Date.now(), severity }],
     }));
     setTimeout(() => { get().dismissNotification(id); }, 4000);
+
+    // 通知音: エラー系は警告音、それ以外は通知音。200ms以内の連続通知は1回にまとめる
+    const now = Date.now();
+    if (now - lastNotificationSoundAt > 200) {
+      lastNotificationSoundAt = now;
+      if (severity === 'error') playErrorSound(); else playNotificationSound();
+    }
   },
 
   dismissNotification: (id: number) => {
