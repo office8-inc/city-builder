@@ -4,24 +4,20 @@ import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import { isDiagonal } from '../game/constants.ts';
-import type { Signal, Direction } from '../game/types.ts';
+import type { Signal, Direction, MapTile } from '../game/types.ts';
 
 const BASE = import.meta.env.BASE_URL;
 
 // Kenney Train Kit track models
 const TRACK_STRAIGHT = BASE + 'models/kenney-trains/railroad-straight.glb';
-const TRACK_CURVE = BASE + 'models/kenney-trains/railroad-curve.glb';
 // Rails-only for elevated sections
 const RAIL_STRAIGHT = BASE + 'models/kenney-trains/railroad-rail-straight.glb';
-const RAIL_CURVE = BASE + 'models/kenney-trains/railroad-rail-curve.glb';
 // 高架線路の支柱
 const PILLAR_MODEL = BASE + 'models/kenney-props/supports_high.glb';
 // 信号機はプロシージャル（Kenneyに適切な鉄道信号モデルがないため）
 
 useGLTF.preload(TRACK_STRAIGHT);
-useGLTF.preload(TRACK_CURVE);
 useGLTF.preload(RAIL_STRAIGHT);
-useGLTF.preload(RAIL_CURVE);
 useGLTF.preload(PILLAR_MODEL);
 
 
@@ -32,12 +28,11 @@ interface TrackTileData {
   rotY: number;
   scaleX: number;
   isElevated: boolean;
-  isCurve: boolean;
 }
 
 function computeSegmentData(
   startX: number, startZ: number, endX: number, endZ: number,
-  direction: Direction, elevation: number, trackType: string, map: any,
+  direction: Direction, elevation: number, map: MapTile[][],
 ): TrackTileData {
   const w1 = gridToWorld(startX, startZ);
   const w2 = gridToWorld(endX, endZ);
@@ -68,14 +63,11 @@ function computeSegmentData(
     rotY: rot,
     scaleX: diagonal ? Math.SQRT2 : 1,
     isElevated: elevated,
-    isCurve: trackType === 'curve',
   };
 }
 
 function TrackModel({ data }: { data: TrackTileData }) {
-  const modelPath = data.isCurve
-    ? (data.isElevated ? RAIL_CURVE : TRACK_CURVE)
-    : (data.isElevated ? RAIL_STRAIGHT : TRACK_STRAIGHT);
+  const modelPath = data.isElevated ? RAIL_STRAIGHT : TRACK_STRAIGHT;
   const { scene } = useGLTF(modelPath);
 
   // Model BBox: X[-0.5,0.5] Y[-1,-0.9] Z[0,4]
@@ -128,7 +120,7 @@ function TrackInstances() {
     const segments = Array.from(tracks.values());
     const data = segments.map(seg => computeSegmentData(
       seg.startX, seg.startZ, seg.endX, seg.endZ,
-      seg.direction, seg.elevation, seg.type, map,
+      seg.direction, seg.elevation, map,
     ));
     const pillarList: { x: number; y: number; z: number; rotY: number }[] = [];
     for (const d of data) {

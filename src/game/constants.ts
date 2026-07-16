@@ -3,7 +3,6 @@ import type { ToolType, Direction, SubsidiaryType, StationType, TrainVehicleType
 // === Map ===
 export const GRID_SIZE = 128;
 export const TILE_SIZE = 1;
-export const MAP_SIZES = { small: 128, medium: 192, large: 256 } as const;
 
 // === Initial State ===
 export const INITIAL_CASH = 3_000_000_000;
@@ -51,8 +50,6 @@ export function isDiagonal(dir: Direction): boolean {
 export const TRACK_COSTS = {
   straight: 5_000_000,
   diagonal: 7_500_000,
-  curve: 8_000_000,
-  switch: 15_000_000,
   elevated: 12_000_000,
   underground: 15_000_000,
   remove: 1_000_000,
@@ -203,8 +200,6 @@ export const TOOL_DEFS: ToolDef[] = [
   { tool: 'none', label: '選択', icon: '👆', category: 'other' },
   { tool: 'track_straight', label: '直線線路', icon: '🛤️', category: 'rail', cost: TRACK_COSTS.straight },
   { tool: 'track_diagonal', label: '斜め線路', icon: '↗️', category: 'rail', cost: TRACK_COSTS.diagonal },
-  { tool: 'track_curve', label: '曲線線路', icon: '↩️', category: 'rail', cost: TRACK_COSTS.curve },
-  { tool: 'track_switch', label: '分岐器', icon: '🔀', category: 'rail', cost: TRACK_COSTS.switch },
   { tool: 'track_elevated', label: '高架線路', icon: '🌉', category: 'rail', cost: TRACK_COSTS.elevated },
   { tool: 'track_underground', label: '地下線路', icon: '🚇', category: 'rail', cost: TRACK_COSTS.underground },
   { tool: 'track_remove', label: '線路撤去', icon: '✂️', category: 'rail' },
@@ -219,6 +214,7 @@ export const TOOL_DEFS: ToolDef[] = [
   { tool: 'signal_place', label: '信号設置', icon: '🚦', category: 'rail' },
   { tool: 'bulldoze', label: '撤去', icon: '🔨', category: 'other' },
   { tool: 'land_buy', label: '土地購入', icon: '📜', category: 'other' },
+  { tool: 'land_sell', label: '土地売却', icon: '🏷️', category: 'other', cost: 0 },
 ];
 
 // === Terrain Colors (for minimap) ===

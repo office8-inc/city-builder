@@ -178,7 +178,7 @@ factory / depot / hotel / department_store / power_plant / material_yard / wareh
 - **建物**: Kenney Suburban（住宅） / Kenney Commercial（商業） / Kenney Buildings（工業・文化） + KayKit-City（レジャー）
 - **駅**: Kenney Buildings（platform_small / platform_long / platform_high, structure, hangar_largeA）
 - **列車**: Kenney Train Kit 全7種（electric-city / electric-square / electric-double, diesel, bullet, locomotive, freight）
-- **線路**: Kenney Train Kit（railroad-straight / railroad-curve, rail-straight / rail-curve）
+- **線路**: Kenney Train Kit（railroad-straight, rail-straight）
 - **道路**: KayKit City（接続性アルゴリズムで straight / corner / tsplit / junction を自動選択）
 - **子会社**: Kenney Buildings + KayKit-City（全15種）
 - **信号**: KayKit City trafficlight
@@ -345,7 +345,7 @@ interface TrackSegment {
   id: string;
   startX: number; startZ: number;
   endX: number; endZ: number;
-  type: 'straight' | 'curve' | 'switch';
+  type: 'straight';            // 曲線・分岐器の専用タイプは廃止済み（8方向線路の重ね敷きで表現）
   direction: Direction;        // 8方向
   elevation: number;           // -1=地下, 0=地上, 1+=高架
 }

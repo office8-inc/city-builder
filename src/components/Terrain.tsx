@@ -336,6 +336,8 @@ function WaterPlane() {
 
   useFrame((_, delta) => {
     const mat = materialRef.current || shaderMaterial;
+    // Three.jsのShaderMaterial uniformsは可変オブジェクトであり、useFrame内で毎フレーム直接更新するのが正しいパターン（再生成はコスト過大）
+    // eslint-disable-next-line react-hooks/immutability
     mat.uniforms.uTime.value += delta;
     const h = useGameStore.getState().gameTime.hour + useGameStore.getState().gameTime.minute / 60;
     const sunAngle = ((h - 6) / 12) * Math.PI;

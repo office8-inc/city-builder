@@ -31,15 +31,6 @@ export function advanceTime(time: GameTime, minutes: number): GameTime {
   return { year, month, day, hour, minute };
 }
 
-export function formatGameTime(time: GameTime): string {
-  const y = time.year;
-  const m = String(time.month).padStart(2, '0');
-  const d = String(time.day).padStart(2, '0');
-  const h = String(time.hour).padStart(2, '0');
-  const min = String(time.minute).padStart(2, '0');
-  return `${y}/${m}/${d} ${h}:${min}`;
-}
-
 export function formatDate(time: GameTime): string {
   const y = time.year;
   const m = String(time.month).padStart(2, '0');

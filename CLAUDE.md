@@ -134,7 +134,7 @@ gamePhase        // 'title' | 'tutorial' | 'playing' | 'gameover' | ...
   - 建物: Kenney Suburban(住宅) / Commercial(商業) / Buildings(工業・文化) + KayKit-City(レジャー)
   - 駅: Kenney Buildings（platform_small/long/high, structure, hangar_largeA）
   - 列車: Kenney Train Kit（全7種: electric-city/square/double, diesel, bullet, locomotive, freight）
-  - 線路: Kenney Train Kit（railroad-straight/curve, rail-straight/curve）
+  - 線路: Kenney Train Kit（railroad-straight, rail-straight。曲線・分岐器の専用ツールは廃止済み）
   - 道路: KayKit City（接続性アルゴリズムで straight/corner/tsplit/junction を自動選択）
   - 子会社: Kenney Buildings + KayKit-City（全15種）
   - 信号: KayKit City trafficlight

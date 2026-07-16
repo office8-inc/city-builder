@@ -32,25 +32,26 @@ const SUBSIDIARY_MODELS: Record<string, string | null> = {
 const subModelPaths = Object.values(SUBSIDIARY_MODELS).filter((p): p is string => p !== null);
 subModelPaths.forEach(p => useGLTF.preload(p));
 
+// 煙パーティクルの初期オフセットはモジュール読み込み時に一度だけ乱数生成する
+// （レンダー内でのMath.random()呼び出しを避けるため。全インスタンスで同じオフセット列を共有する）
+const SMOKE_PARTICLE_COUNT = 8;
+const smokeParticles = Array.from({ length: SMOKE_PARTICLE_COUNT }, (_, i) => ({
+  offset: i * 0.4,
+  x: (Math.random() - 0.5) * 0.05,
+  z: (Math.random() - 0.5) * 0.05,
+  speed: 0.1 + Math.random() * 0.05,
+}));
+
 // Smoke particles (procedural - kept as particle effect)
 function SmokeParticles({ position }: { position: [number, number, number] }) {
   const ref = useRef<THREE.InstancedMesh>(null);
-  const count = 8;
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const particles = useMemo(() =>
-    Array.from({ length: count }, (_, i) => ({
-      offset: i * 0.4,
-      x: (Math.random() - 0.5) * 0.05,
-      z: (Math.random() - 0.5) * 0.05,
-      speed: 0.1 + Math.random() * 0.05,
-    })),
-  []);
 
   useFrame(({ clock }) => {
     if (!ref.current) return;
     const t = clock.getElapsedTime();
-    for (let i = 0; i < count; i++) {
-      const p = particles[i];
+    for (let i = 0; i < SMOKE_PARTICLE_COUNT; i++) {
+      const p = smokeParticles[i];
       const age = ((t * p.speed + p.offset) % 1.6);
       dummy.position.set(position[0] + p.x * age, position[1] + age * 0.5, position[2] + p.z * age);
       const scale = 0.02 + age * 0.03;
@@ -62,7 +63,7 @@ function SmokeParticles({ position }: { position: [number, number, number] }) {
   });
 
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, count]}>
+    <instancedMesh ref={ref} args={[undefined, undefined, SMOKE_PARTICLE_COUNT]}>
       <sphereGeometry args={[1, 6, 6]} />
       <meshStandardMaterial color="#aaaaaa" transparent opacity={0.35} />
     </instancedMesh>

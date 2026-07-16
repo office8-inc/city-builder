@@ -49,19 +49,23 @@ function TrainMesh({ trainId }: { trainId: string }) {
   const isNight = hour < 6 || hour >= 18;
 
   // Stable freight car model selection per train
+  // (train.id === trainId なので、位置更新のたびに変わるtrainオブジェクト全体ではなく
+  //  安定したプリミティブ値のみをuseMemoの依存に使い、不要な再計算を避ける)
+  const trainType = train?.type;
+  const trainCars = train?.cars;
   const freightModels = useMemo(() => {
-    if (!train) return [];
-    const models = TRAIN_MODELS[train.type];
+    if (trainType === undefined || trainCars === undefined) return [];
+    const models = TRAIN_MODELS[trainType];
     if (!models?.freight) return [];
     // Use train id hash for deterministic selection
     let hash = 0;
-    for (let i = 0; i < train.id.length; i++) hash = ((hash << 5) - hash + train.id.charCodeAt(i)) | 0;
-    return Array.from({ length: train.cars }, (_, i) => {
+    for (let i = 0; i < trainId.length; i++) hash = ((hash << 5) - hash + trainId.charCodeAt(i)) | 0;
+    return Array.from({ length: trainCars }, (_, i) => {
       if (i === 0) return models.front;
-      if (i === train.cars - 1) return models.rear;
+      if (i === trainCars - 1) return models.rear;
       return models.freight![Math.abs(hash + i * 7) % models.freight!.length];
     });
-  }, [train?.id, train?.type, train?.cars]);
+  }, [trainId, trainType, trainCars]);
 
   useFrame(() => {
     const { trains, tracks, map } = useGameStore.getState();

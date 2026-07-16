@@ -1,5 +1,6 @@
 import type { TrackSegment, Train, Station, Signal } from './types.ts';
 import { isDiagonal } from './constants.ts';
+import { getSignalSpeedMultiplier } from './signals.ts';
 
 /**
  * Find all segments that share an endpoint with the given segment.
@@ -78,13 +79,7 @@ export function getNextSegment(
     }
   }
 
-  // Default: use switchState if it's a switch segment, or pick first
-  const currentSeg = tracks.get(currentId);
-  if (currentSeg?.type === 'switch') {
-    const mainIdx = currentSeg.switchState === 'diverge' ? 1 : 0;
-    return candidates[Math.min(mainIdx, candidates.length - 1)];
-  }
-
+  // Default: pick the first candidate
   return candidates[0];
 }
 
@@ -133,34 +128,6 @@ function getNextTargetStationId(train: Train): string | undefined {
 }
 
 /**
- * Get signal speed multiplier for a train based on signals ahead.
- */
-function getSignalMultiplier(
-  train: Train,
-  tracks: Map<string, TrackSegment>,
-  signals: Map<string, Signal>,
-): number {
-  if (signals.size === 0) return 1.0;
-
-  const seg = tracks.get(train.currentSegmentId);
-  if (!seg) return 1.0;
-
-  const exitX = train.direction === 1 ? seg.endX : seg.startX;
-  const exitZ = train.direction === 1 ? seg.endZ : seg.startZ;
-
-  for (const signal of signals.values()) {
-    if (signal.x === exitX && signal.z === exitZ) {
-      switch (signal.state) {
-        case 'red': return 0;
-        case 'yellow': return 0.5;
-        case 'green': return 1.0;
-      }
-    }
-  }
-  return 1.0;
-}
-
-/**
  * Advance a train's position along connected track segments.
  * Handles transitions between segments and bouncing at dead ends.
  * Supports signal system and schedule-based junction routing.
@@ -173,7 +140,7 @@ export function advanceTrainPosition(
   stations?: Map<string, Station>,
 ): Pick<Train, 'positionOnSegment' | 'currentSegmentId' | 'direction'> {
   // Apply signal multiplier
-  const signalMult = signals ? getSignalMultiplier(train, tracks, signals) : 1.0;
+  const signalMult = signals ? getSignalSpeedMultiplier(train, tracks, signals) : 1.0;
   if (signalMult === 0) {
     // Red signal: don't move
     return {

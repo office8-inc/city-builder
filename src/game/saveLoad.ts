@@ -9,6 +9,7 @@ import type {
   Loan,
   MapTile,
   Finance,
+  IncomeBreakdown,
   GameTime,
   GameSpeed,
   QuarterlyRecord,
@@ -134,45 +135,45 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
 
   const finance: Finance = {
     ...data.finance,
-    stockPrice: (data.finance as any).stockPrice ?? 1000,
-    totalAssets: (data.finance as any).totalAssets ?? data.finance.cash,
+    stockPrice: (data.finance as unknown as Partial<Finance>).stockPrice ?? 1000,
+    totalAssets: (data.finance as unknown as Partial<Finance>).totalAssets ?? data.finance.cash,
     quarterlyIncome: {
       ...data.finance.quarterlyIncome,
-      landRent: (data.finance.quarterlyIncome as any).landRent ?? 0,
+      landRent: (data.finance.quarterlyIncome as unknown as Partial<IncomeBreakdown>).landRent ?? 0,
     },
   };
 
   const buildings = new Map<string, Building>();
   for (const [id, b] of data.buildings) {
-    buildings.set(id, { ...b, materialRequirement: (b as any).materialRequirement ?? 0 });
+    buildings.set(id, { ...b, materialRequirement: (b as unknown as Partial<Building>).materialRequirement ?? 0 });
   }
 
   const trains = new Map<string, Train>();
   for (const [id, t] of data.trains) {
     trains.set(id, {
       ...t,
-      waitTimer: (t as any).waitTimer ?? 0,
-      materialLoad: (t as any).materialLoad ?? 0,
-      schedule: (t as any).schedule ?? { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
+      waitTimer: (t as unknown as Partial<Train>).waitTimer ?? 0,
+      materialLoad: (t as unknown as Partial<Train>).materialLoad ?? 0,
+      schedule: (t as unknown as Partial<Train>).schedule ?? { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
     });
   }
 
   const stations = new Map<string, Station>();
   for (const [id, s] of data.stations) {
-    stations.set(id, { ...s, type: (s as any).type ?? 'ground_small' });
+    stations.set(id, { ...s, type: (s as unknown as Partial<Station>).type ?? 'ground_small' });
   }
 
   const subsidiaries = new Map<string, Subsidiary>();
   for (const [id, s] of data.subsidiaries) {
-    subsidiaries.set(id, { ...s, level: (s as any).level ?? 1 });
+    subsidiaries.set(id, { ...s, level: (s as unknown as Partial<Subsidiary>).level ?? 1 });
   }
 
   const tracks = new Map<string, TrackSegment>();
   for (const [id, t] of data.tracks) {
     tracks.set(id, {
       ...t,
-      direction: (t as any).direction ?? (t.startZ === t.endZ ? 'E' : 'S'),
-      elevation: (t as any).elevation ?? 0,
+      direction: (t as unknown as Partial<TrackSegment>).direction ?? (t.startZ === t.endZ ? 'E' : 'S'),
+      elevation: (t as unknown as Partial<TrackSegment>).elevation ?? 0,
     });
   }
 
@@ -216,6 +217,7 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
     speed: data.speed,
     season: data.season,
     weatherType: data.weatherType,
+    selectedTrainType: data.selectedTrainType,
     constructionMode: data.constructionMode,
     scenarioId: data.scenarioId,
     lastDevelopmentDay: data.lastDevelopmentDay,

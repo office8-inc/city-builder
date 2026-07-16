@@ -17,10 +17,9 @@ export interface TrackSegment {
   startZ: number;
   endX: number;
   endZ: number;
-  type: 'straight' | 'curve' | 'switch';
+  type: 'straight';
   direction: Direction;
   elevation: number;
-  switchState?: 'main' | 'diverge';
 }
 
 // === Station ===
@@ -228,7 +227,7 @@ export interface Scenario {
 }
 
 // === Game Phase ===
-export type GamePhase = 'title' | 'playing' | 'tutorial' | 'gameover' | 'scenario_select' | 'map_editor';
+export type GamePhase = 'title' | 'playing' | 'tutorial' | 'gameover' | 'map_editor';
 
 // === Camera Mode ===
 export type CameraMode = 'free' | 'follow' | 'quarter';
@@ -239,8 +238,6 @@ export type ToolType =
   | 'none'
   | 'track_straight'
   | 'track_diagonal'
-  | 'track_curve'
-  | 'track_switch'
   | 'track_elevated'
   | 'track_underground'
   | 'track_remove'

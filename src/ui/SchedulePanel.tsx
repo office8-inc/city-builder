@@ -186,7 +186,7 @@ export function SchedulePanel() {
 
           {/* Schedule editor */}
           {selectedTrain ? (
-            <TrainScheduleEditor train={selectedTrain} />
+            <TrainScheduleEditor key={selectedTrain.id} train={selectedTrain} />
           ) : (
             <div className="text-white/40 text-xs text-center py-4">列車を選択してください</div>
           )}

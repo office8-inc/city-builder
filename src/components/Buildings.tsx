@@ -172,7 +172,7 @@ function GLBBuilding({ building, position, modelPath, isNight }: {
       scale: [baseScale, baseScale, baseScale] as [number, number, number],
       rotY: Math.floor(seededRandom(seed + 50) * 4) * (Math.PI / 2),
     };
-  }, [building, modelPath]);
+  }, [building]);
 
   // 夜間の窓明かり: colormapの青色ピクセル（窓）をemissiveMapとして発光
   const shouldGlow = isNight && (building.type === 'residential' || building.type === 'commercial' || building.type === 'office');

@@ -110,7 +110,6 @@ function RoadLights({ positions, isNight }: { positions: [number, number, number
 
 export function Roads() {
   const map = useGameStore(s => s.map);
-  const buildings = useGameStore(s => s.buildings);
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
 
@@ -144,7 +143,9 @@ export function Roads() {
         if (tile.roadLevel > 0 && tile.trackIds.length === 0) {
           const w = gridToWorld(x, z);
           const h = roadHeights.get(`${x},${z}`) ?? getTileWorldHeight(tile);
-          let { shape, rotY } = computeRoadConnectivity(x, z, map);
+          const connectivity = computeRoadConnectivity(x, z, map);
+          const rotY = connectivity.rotY;
+          let shape = connectivity.shape;
 
           // Use lightpost variant for every 4th straight tile
           const useLights = shape === 'straight' && (x + z) % 4 === 0;
@@ -162,7 +163,7 @@ export function Roads() {
       }
     }
     return { roadTiles: tiles, lightPositions: lights };
-  }, [map, buildings]);
+  }, [map]);
 
   if (roadTiles.length === 0) return null;
 

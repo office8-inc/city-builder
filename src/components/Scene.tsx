@@ -176,8 +176,9 @@ function KeyboardControls() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const state = useGameStore.getState();
-      // Don't handle shortcuts during title/tutorial phases (except Escape)
-      if (state.gamePhase !== 'playing' && e.key !== 'Escape') return;
+      // Don't handle shortcuts during title phase (except Escape)。
+      // チュートリアル中は最終ステップの「Fキーで財務パネル」等の案内を機能させるため許可する
+      if (state.gamePhase !== 'playing' && state.gamePhase !== 'tutorial' && e.key !== 'Escape') return;
 
       switch (e.key) {
         case '1': setSpeed(1); break;
