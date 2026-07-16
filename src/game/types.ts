@@ -267,6 +267,11 @@ export interface GameNotification {
 export interface GameState {
   map: MapTile[][];
   mapSize: number;
+  // mapはタイルを直接ミューテートすることが多く配列参照が変わらないため、
+  // 道路生成（generateRoads/generateStationRoads）が起きたことをReact側に伝える
+  // 軽量な変更シグナル。map全体の参照を毎回置き換えるとTerrainのジオメトリ再生成
+  // コストが大きいため、Roads.tsx専用の依存として使う
+  roadRevision: number;
 
   tracks: Map<string, TrackSegment>;
   stations: Map<string, Station>;

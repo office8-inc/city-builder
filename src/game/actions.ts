@@ -258,12 +258,11 @@ export function createBuildStation(set: SetFn, get: GetFn) {
 
     // Generate road network around the station
     generateStationRoads(x, z, map);
-    // mapはタイルを直接ミューテートしているだけで配列参照が変わらないため、
-    // 参照を更新してReact側（Roads.tsxのuseMemo等）に道路生成を反映させる
-    const newMap = map.map(row => [...row]);
 
     const newCash = state.constructionMode ? finance.cash : finance.cash - cost;
-    set({ stations: newStations, finance: { ...finance, cash: newCash }, map: newMap });
+    // generateStationRoadsはmapを直接ミューテートし配列参照は変わらないため、
+    // Roads.tsx側の再計算トリガーとしてroadRevisionをインクリメントする
+    set({ stations: newStations, finance: { ...finance, cash: newCash }, roadRevision: state.roadRevision + 1 });
 
     get().addNotification(`${name}駅を建設 (${formatMoney(cost)})`, 'success');
   };

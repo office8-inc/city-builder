@@ -110,10 +110,16 @@ function RoadLights({ positions, isNight }: { positions: [number, number, number
 
 export function Roads() {
   const map = useGameStore(s => s.map);
+  // generateRoads/generateStationRoadsはmapを直接ミューテートし配列参照は変わらないため、
+  // roadRevisionを依存に加えて道路生成イベントごとに再計算させる
+  const roadRevision = useGameStore(s => s.roadRevision);
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
 
   const { roadTiles, lightPositions } = useMemo(() => {
+    // roadRevisionはmap内のroadLevelミューテーションを検知するためのキャッシュ無効化トリガー
+    // （値自体は使わないが、依存配列に含めるために参照する）
+    void roadRevision;
     const tiles: RoadTileInfo[] = [];
     const lights: [number, number, number][] = [];
 
@@ -163,7 +169,7 @@ export function Roads() {
       }
     }
     return { roadTiles: tiles, lightPositions: lights };
-  }, [map]);
+  }, [map, roadRevision]);
 
   if (roadTiles.length === 0) return null;
 

@@ -72,6 +72,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   // Map
   map: _initialMap,
   mapSize: GRID_SIZE,
+  roadRevision: 0,
 
   // Entities（タイトル画面ならショーケースデータを適用）
   tracks: _showcase?.tracks ?? new Map<string, TrackSegment>(),
@@ -266,12 +267,13 @@ export const useGameStore = create<GameState>((set, get) => ({
             generateRoads(b.x, b.z, state.map);
           }
           updates.buildings = updatedBuildings;
+          // generateRoadsはmapを直接ミューテートし配列参照は変わらないため、
+          // Roads.tsx側の再計算トリガーとしてroadRevisionをインクリメントする
+          // （map全体の参照置き換えはTerrain側の重いジオメトリ再生成を招くため避ける）
+          updates.roadRevision = state.roadRevision + 1;
         }
         // Update land values periodically
         updateLandValues(state);
-        // mapはタイル（roadLevel, landValue等）を直接ミューテートしているだけで配列参照が
-        // 変わらないため、参照を更新してReact側（Roads.tsxのuseMemo等）に反映させる
-        updates.map = state.map.map(row => [...row]);
       }
 
       // Update workforce
@@ -508,6 +510,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     setNextEntityId(1);
     set({
       map: newMap,
+      roadRevision: 0,
       tracks: new Map(),
       stations: new Map(),
       trains: new Map(),
