@@ -1,32 +1,7 @@
 import { useGameStore } from '../game/store.ts';
+import { TUTORIAL_STEPS } from '../game/constants.ts';
 
-const STEPS = [
-  {
-    icon: '🛤️',
-    text: '左のツールバーから線路を選んで、マップ上をドラッグして線路を敷こう',
-    highlight: 'left',
-  },
-  {
-    icon: '🚉',
-    text: '駅ツールを選んで、線路の上にクリックして駅を作ろう',
-    highlight: 'left',
-  },
-  {
-    icon: '🚃',
-    text: '列車ツールを選んで、駅をクリックして列車を配置しよう',
-    highlight: 'left',
-  },
-  {
-    icon: '⏩',
-    text: '時間を進めてみよう。駅の周りに建物が自動的に建つよ！',
-    highlight: 'top',
-  },
-  {
-    icon: '💰',
-    text: 'Fキーで財務パネルを確認。収支を見ながら路線を拡張しよう！',
-    highlight: 'none',
-  },
-];
+const STEPS = TUTORIAL_STEPS;
 
 export function Tutorial() {
   const tutorialStep = useGameStore(s => s.tutorialStep);

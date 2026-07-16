@@ -319,6 +319,10 @@ export interface GameState {
   scenarioCleared: boolean;
   // 経営破綻からの緊急支援融資を使用済みか（1ゲームにつき1回限り）
   bailoutUsed: boolean;
+  // 達成済みマイルストーンのID集合（一度通知したものを再通知しないため。GAME_DESIGN.md未記載の軽量実績システム）
+  achievedMilestones: Set<string>;
+  // これまでに借入（通常融資＋緊急支援融資）を行った回数の累計。「融資完済」マイルストーン判定に使用
+  totalLoansTaken: number;
 
   selectedTool: ToolType;
   selectedSubsidiaryType: SubsidiaryType | null;

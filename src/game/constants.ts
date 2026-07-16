@@ -223,6 +223,62 @@ export const TOOL_DEFS: ToolDef[] = [
   { tool: 'land_sell', label: '土地売却', icon: '🏷️', category: 'other', cost: 0 },
 ];
 
+// === Tutorial Steps ===
+export interface TutorialStep {
+  icon: string;
+  text: string;
+  // ヒントカードを画面のどこに表示するか（対応するUI要素の近く）
+  highlight: 'left' | 'top' | 'none';
+}
+
+export const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    icon: '🛤️',
+    text: '左のツールバーから線路を選んで、マップ上をドラッグして線路を敷こう',
+    highlight: 'left',
+  },
+  {
+    icon: '🚉',
+    text: '駅ツールを選んで、線路の上にクリックして駅を作ろう',
+    highlight: 'left',
+  },
+  {
+    icon: '🚃',
+    text: '列車ツールを選んで、駅をクリックして列車を配置しよう',
+    highlight: 'left',
+  },
+  {
+    icon: '🚆',
+    text: 'Gキーまたは🚆ダイヤボタンでダイヤ設定パネルを開こう。駅ごとの停車/通過や、循環・往復・片道の運行パターンを設定できるよ',
+    highlight: 'top',
+  },
+  {
+    icon: '🚦',
+    text: '🛤️カテゴリの信号設置ツールで線路に信号を置くと、ブロック信号が列車同士の衝突を自動的に防止してくれるよ。🚛貨物列車を工場と駅の間で走らせて資材を運ぶと、駅周辺の建物がレベル4以上に発展できるようになる',
+    highlight: 'left',
+  },
+  {
+    icon: '⏩',
+    text: '時間を進めてみよう。駅の周りに建物が自動的に建つよ！',
+    highlight: 'top',
+  },
+  {
+    icon: '💰',
+    text: 'Fキーで財務パネルを確認。収支を見ながら路線を拡張しよう！',
+    highlight: 'none',
+  },
+  {
+    icon: '🏢',
+    text: '🏢施設カテゴリから子会社を建てると副収入に。その他カテゴリの土地購入/売却で気になる土地を売り買いできるよ',
+    highlight: 'left',
+  },
+  {
+    icon: '🎯',
+    text: '腕試しはタイトル画面の「シナリオ」モードで！ 目標達成を目指す3つのシナリオが用意されているよ',
+    highlight: 'none',
+  },
+];
+
 // === Terrain Colors (for minimap) ===
 export const TERRAIN_COLORS: Record<string, string> = {
   flat: '#5a9e3e',

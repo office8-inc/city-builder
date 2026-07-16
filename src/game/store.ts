@@ -22,7 +22,8 @@ import type {
   TrainVehicleType,
   TrainSchedule,
 } from './types.ts';
-import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RATIO, formatMoney, TRAIN_TYPES } from './constants.ts';
+import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RATIO, formatMoney, TRAIN_TYPES, TUTORIAL_STEPS } from './constants.ts';
+import { checkNewMilestones, type MilestoneContext } from './milestones.ts';
 import { generateTerrain } from './terrain.ts';
 import { advanceTime, calculateDailyFinance } from './simulation.ts';
 import { SCENARIOS, checkObjectives } from './scenarios.ts';
@@ -120,6 +121,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   scenarioStartYear: null,
   scenarioCleared: false,
   bailoutUsed: false,
+  achievedMilestones: new Set<string>(),
+  totalLoansTaken: 0,
 
   // UI
   selectedTool: 'none',
@@ -383,6 +386,28 @@ export const useGameStore = create<GameState>((set, get) => ({
         updates.finance = finance;
       }
 
+      // マイルストーン判定（人口・駅数・列車数・子会社数・新幹線導入・融資完済・資金）。
+      // 「初の黒字四半期」だけは四半期決算のタイミング（下のQuarterly report内）で別途判定する
+      const dailyMilestoneCtx: MilestoneContext = {
+        population: calculatePopulation(buildings),
+        stationCount: state.stations.size,
+        trainCount: (updates.trains ?? state.trains).size,
+        subsidiaryCount: state.subsidiaries.size,
+        hasShinkansen: Array.from((updates.trains ?? state.trains).values()).some(t => t.type === 'shinkansen'),
+        cash: (updates.finance ?? state.finance).cash,
+        loanCount: (updates.loans ?? state.loans).length,
+        totalLoansTaken: state.totalLoansTaken,
+      };
+      const newDailyMilestones = checkNewMilestones(dailyMilestoneCtx, state.achievedMilestones);
+      if (newDailyMilestones.length > 0) {
+        const nextAchieved = new Set(state.achievedMilestones);
+        for (const m of newDailyMilestones) {
+          nextAchieved.add(m.id);
+          get().addNotification(m.message, 'success');
+        }
+        updates.achievedMilestones = nextAchieved;
+      }
+
       // Auto-save every 5 in-game days
       if (dayId % 5 === 0 && dayId !== state.lastAutoSaveDay) {
         updates.lastAutoSaveDay = dayId;
@@ -444,6 +469,29 @@ export const useGameStore = create<GameState>((set, get) => ({
         finance.quarterlyIncome = { railFare: 0, subsidiary: 0, other: 0, landRent: 0, materialTransport: 0 };
         finance.quarterlyExpenses = { trackMaintenance: 0, trainMaintenance: 0, staffCost: 0, subsidiaryRunning: 0, interestPayment: 0 };
         updates.finance = finance;
+
+        // マイルストーン判定（初の黒字四半期）。日次チェックで既に更新済みのSetがあればそれを土台にする
+        const baseAchieved = updates.achievedMilestones ?? state.achievedMilestones;
+        const quarterlyMilestoneCtx: MilestoneContext = {
+          population: updates.population ?? state.population,
+          stationCount: state.stations.size,
+          trainCount: (updates.trains ?? state.trains).size,
+          subsidiaryCount: state.subsidiaries.size,
+          hasShinkansen: Array.from((updates.trains ?? state.trains).values()).some(t => t.type === 'shinkansen'),
+          cash: finance.cash,
+          loanCount: (updates.loans ?? state.loans).length,
+          totalLoansTaken: state.totalLoansTaken,
+          quarterlyNet: net,
+        };
+        const newQuarterlyMilestones = checkNewMilestones(quarterlyMilestoneCtx, baseAchieved);
+        if (newQuarterlyMilestones.length > 0) {
+          const nextAchieved = new Set(baseAchieved);
+          for (const m of newQuarterlyMilestones) {
+            nextAchieved.add(m.id);
+            get().addNotification(m.message, 'success');
+          }
+          updates.achievedMilestones = nextAchieved;
+        }
       }
 
       // Bankruptcy check (monthly)
@@ -520,7 +568,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   nextTutorialStep: () => {
     const state = get();
     const nextStep = state.tutorialStep + 1;
-    if (nextStep >= 5) {
+    if (nextStep >= TUTORIAL_STEPS.length) {
       set({ tutorialStep: 0, gamePhase: 'playing' });
       localStorage.setItem('atrain-tutorial-done', '1');
     } else {
@@ -567,6 +615,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newDebt = newLoans.reduce((sum, l) => sum + l.monthlyPayment * l.remainingMonths, 0);
     set({
       loans: newLoans,
+      totalLoansTaken: state.totalLoansTaken + 1,
       finance: { ...state.finance, cash: state.finance.cash + amount, debt: newDebt },
     });
     get().addNotification(`${formatMoney(amount)}を借入しました`, 'info');
@@ -616,6 +665,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newDebt = newLoans.reduce((sum, l) => sum + l.monthlyPayment * l.remainingMonths, 0);
     set({
       loans: newLoans,
+      totalLoansTaken: state.totalLoansTaken + 1,
       bailoutUsed: true,
       gamePhase: 'playing',
       finance: { ...state.finance, cash: state.finance.cash + BAILOUT_CASH, debt: newDebt },
@@ -696,6 +746,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       scenarioStartYear: null,
       scenarioCleared: false,
       bailoutUsed: false,
+      achievedMilestones: new Set<string>(),
+      totalLoansTaken: 0,
       selectedTool: 'none',
       selectedTrainId: null,
       followTrainId: null,

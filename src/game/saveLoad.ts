@@ -99,7 +99,42 @@ interface SerializedStateV3 {
   nextBuildingId: number;
 }
 
-type SerializedState = SerializedStateV1 | SerializedStateV2 | SerializedStateV3;
+interface SerializedStateV4 {
+  version: 4;
+  map: MapTile[][];
+  tracks: [string, TrackSegment][];
+  stations: [string, Station][];
+  trains: [string, Train][];
+  buildings: [string, Building][];
+  subsidiaries: [string, Subsidiary][];
+  signals: [string, Signal][];
+  finance: Finance;
+  population: number;
+  workforce: number;
+  quarterlyHistory: QuarterlyRecord[];
+  loans: Loan[];
+  ownedLand: string[];
+  gameTime: GameTime;
+  speed: GameSpeed;
+  season: Season;
+  weatherType: WeatherType;
+  selectedTrainType: TrainVehicleType;
+  constructionMode: boolean;
+  scenarioId: string | null;
+  scenarioStartYear: number | null;
+  scenarioCleared: boolean;
+  bailoutUsed: boolean;
+  // v1.0（マイルストーン通知）より前のセーブには存在しないため、ロード時にデフォルト値で補完する
+  achievedMilestones: string[];
+  totalLoansTaken: number;
+  lastDevelopmentDay: number;
+  lastLevelUpMonth: number;
+  lastAutoSaveDay: number;
+  nextEntityId: number;
+  nextBuildingId: number;
+}
+
+type SerializedState = SerializedStateV1 | SerializedStateV2 | SerializedStateV3 | SerializedStateV4;
 
 // v1.0（terminated追加）より前のセーブにはtrain.terminatedが存在しないため、
 // ロード時にデフォルト値(false)で補完する
@@ -125,8 +160,8 @@ function getSaveKey(slot?: number): string {
 }
 
 export function serializeState(state: GameState): string {
-  const data: SerializedStateV3 = {
-    version: 3,
+  const data: SerializedStateV4 = {
+    version: 4,
     map: state.map,
     tracks: Array.from(state.tracks.entries()),
     stations: Array.from(state.stations.entries()),
@@ -150,6 +185,8 @@ export function serializeState(state: GameState): string {
     scenarioStartYear: state.scenarioStartYear,
     scenarioCleared: state.scenarioCleared,
     bailoutUsed: state.bailoutUsed,
+    achievedMilestones: Array.from(state.achievedMilestones),
+    totalLoansTaken: state.totalLoansTaken,
     lastDevelopmentDay: state.lastDevelopmentDay,
     lastLevelUpMonth: state.lastLevelUpMonth,
     lastAutoSaveDay: state.lastAutoSaveDay,
@@ -245,6 +282,8 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
     scenarioStartYear: null,
     scenarioCleared: false,
     bailoutUsed: false,
+    achievedMilestones: new Set<string>(),
+    totalLoansTaken: 0,
   };
 }
 
@@ -277,6 +316,9 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
     scenarioStartYear: null,
     scenarioCleared: false,
     bailoutUsed: false,
+    // v2セーブにはマイルストーン進行が存在しないためデフォルト値で補完
+    achievedMilestones: new Set<string>(),
+    totalLoansTaken: 0,
     lastDevelopmentDay: data.lastDevelopmentDay,
     lastLevelUpMonth: data.lastLevelUpMonth,
     lastAutoSaveDay: data.lastAutoSaveDay || 0,
@@ -311,6 +353,45 @@ function loadV3(data: SerializedStateV3): Partial<GameState> {
     scenarioStartYear: data.scenarioStartYear ?? null,
     scenarioCleared: data.scenarioCleared ?? false,
     bailoutUsed: data.bailoutUsed ?? false,
+    // v3セーブにはマイルストーン進行が存在しないためデフォルト値で補完
+    achievedMilestones: new Set<string>(),
+    totalLoansTaken: 0,
+    lastDevelopmentDay: data.lastDevelopmentDay,
+    lastLevelUpMonth: data.lastLevelUpMonth,
+    lastAutoSaveDay: data.lastAutoSaveDay || 0,
+  };
+}
+
+function loadV4(data: SerializedStateV4): Partial<GameState> {
+  setNextEntityId(data.nextEntityId);
+  setNextBuildingId(data.nextBuildingId);
+
+  return {
+    map: data.map,
+    tracks: new Map(data.tracks),
+    stations: new Map(data.stations),
+    trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
+    buildings: new Map(data.buildings),
+    subsidiaries: new Map(data.subsidiaries),
+    signals: new Map(data.signals),
+    finance: normalizeFinance(data.finance),
+    population: data.population,
+    workforce: data.workforce,
+    quarterlyHistory: data.quarterlyHistory || [],
+    loans: data.loans || [],
+    ownedLand: new Set(data.ownedLand || []),
+    gameTime: data.gameTime,
+    speed: data.speed,
+    season: data.season,
+    weatherType: data.weatherType,
+    selectedTrainType: data.selectedTrainType,
+    constructionMode: data.constructionMode,
+    scenarioId: data.scenarioId,
+    scenarioStartYear: data.scenarioStartYear ?? null,
+    scenarioCleared: data.scenarioCleared ?? false,
+    bailoutUsed: data.bailoutUsed ?? false,
+    achievedMilestones: new Set(data.achievedMilestones || []),
+    totalLoansTaken: data.totalLoansTaken ?? 0,
     lastDevelopmentDay: data.lastDevelopmentDay,
     lastLevelUpMonth: data.lastLevelUpMonth,
     lastAutoSaveDay: data.lastAutoSaveDay || 0,
@@ -341,6 +422,9 @@ export function loadFromLocalStorage(slot?: number): Partial<GameState> | null {
     }
     if (data.version === 3) {
       return loadV3(data);
+    }
+    if (data.version === 4) {
+      return loadV4(data);
     }
 
     return null;
