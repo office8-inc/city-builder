@@ -269,6 +269,9 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
         // Update land values periodically
         updateLandValues(state);
+        // mapはタイル（roadLevel, landValue等）を直接ミューテートしているだけで配列参照が
+        // 変わらないため、参照を更新してReact側（Roads.tsxのuseMemo等）に反映させる
+        updates.map = state.map.map(row => [...row]);
       }
 
       // Update workforce
