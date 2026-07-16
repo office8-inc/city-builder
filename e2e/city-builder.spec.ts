@@ -708,3 +708,267 @@ test.describe('Material Transport Pipeline', () => {
     expect(result.materialTransportIncome).toBeGreaterThan(0);
   });
 });
+
+test.describe('Milestones', () => {
+  test('reaching 5 stations fires the milestone notification', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      const s = store.getState();
+      for (let i = 10; i < 30; i++) s.placeTrack(i, 25, i + 1, 25);
+      s.buildStation(12, 25);
+      s.buildStation(15, 25);
+      s.buildStation(18, 25);
+      s.buildStation(21, 25);
+      s.buildStation(24, 25);
+
+      // 日次更新をまたぐ（day境界: hour23:50 → tick1回でhour0:00へ）ことでマイルストーン判定を発火させる
+      store.setState({ gameTime: { year: 2024, month: 4, day: 1, hour: 23, minute: 50 }, lastDevelopmentDay: 0 });
+      store.getState().tick();
+
+      const state = store.getState();
+      return {
+        achieved: Array.from(state.achievedMilestones),
+        notifications: state.notifications.map(n => n.message),
+      };
+    })()`);
+    expect(result.achieved).toContain('stations_5');
+    expect(result.notifications).toContain('🚉 駅を5駅開業しました！');
+  });
+});
+
+test.describe('Scenario Time Limit & Clear/Failed Screens', () => {
+  test('achieving all objectives transitions to the scenario clear screen', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      const s = store.getState();
+
+      // 「山間の街おこし」シナリオの目標（人口5,000人・駅5つ）を満たす状態を作る
+      for (let i = 10; i < 30; i++) s.placeTrack(i, 25, i + 1, 25);
+      s.buildStation(12, 25);
+      s.buildStation(15, 25);
+      s.buildStation(18, 25);
+      s.buildStation(21, 25);
+      s.buildStation(24, 25);
+
+      // calculatePopulationはbuildingsのresidents合計を見るだけなので、
+      // 実在しないsubtypeの建物を直接注入すればlevelUpBuildingsの影響を受けずに人口を作れる
+      store.setState({
+        buildings: new Map([['pop_test', {
+          id: 'pop_test', x: 5, z: 5, type: 'residential', subtype: '__scenario_test__',
+          level: 1, width: 1, depth: 1, height: 1, residents: 6000, workers: 0,
+        }]]),
+      });
+
+      store.setState({
+        scenarioId: 'mountain_village',
+        scenarioStartYear: 2024,
+        scenarioCleared: false,
+        gamePhase: 'playing',
+        // 月初(day=1, hour=0, minute=0)のtickでシナリオ判定が走るよう、月末23:50から1tick進める
+        gameTime: { year: 2024, month: 5, day: 30, hour: 23, minute: 50 },
+        lastLevelUpMonth: 0,
+        lastDevelopmentDay: 0,
+      });
+      store.getState().tick();
+
+      const state = store.getState();
+      return { gamePhase: state.gamePhase, scenarioCleared: state.scenarioCleared, population: state.population };
+    })()`);
+    expect(result.gamePhase).toBe('scenario_clear');
+    expect(result.scenarioCleared).toBe(true);
+    expect(result.population).toBeGreaterThanOrEqual(5000);
+    await expect(page.getByText('シナリオクリア！')).toBeVisible();
+    // 「山間の街おこし」というテキストは通知にも重複して出るため、クリア画面カード内の要素に絞る
+    await expect(page.getByText('シナリオクリア！').locator('..').getByText('山間の街おこし')).toBeVisible();
+  });
+
+  test('exceeding the time limit without completing objectives shows the failed screen, and continuing returns to free play', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const phase = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      store.setState({
+        scenarioId: 'mountain_village',
+        scenarioStartYear: 1990, // timeLimit(30年)を大幅に超過させる
+        scenarioCleared: false,
+        gamePhase: 'playing',
+        gameTime: { year: 2024, month: 5, day: 30, hour: 23, minute: 50 },
+        lastLevelUpMonth: 0,
+      });
+      store.getState().tick();
+      return store.getState().gamePhase;
+    })()`);
+    expect(phase).toBe('scenario_failed');
+    await expect(page.getByText('シナリオ失敗…')).toBeVisible();
+
+    await page.getByRole('button', { name: 'このまま続ける' }).click();
+    const after = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      return { gamePhase: s.gamePhase, scenarioId: s.scenarioId };
+    })()`);
+    expect(after.gamePhase).toBe('playing');
+    expect(after.scenarioId).toBeNull();
+    await expect(page.getByText('シナリオ失敗…')).not.toBeVisible();
+  });
+});
+
+test.describe('Underground Track & Subway Station', () => {
+  test('subway station can only be built on underground-only track', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 地下線路のみのタイルには地下鉄駅を建設できる
+      s.setSelectedTool('track_underground');
+      s.placeTrack(58, 64, 60, 64);
+      s.buildStation(59, 64, 'underground');
+
+      // 地上線路のみのタイルには地下鉄駅を建設できない（エラー通知が出て駅は作られない）
+      s.setSelectedTool('track_straight');
+      s.placeTrack(58, 66, 60, 66);
+      const beforeCount = window.__gameStore.getState().stations.size;
+      s.buildStation(59, 66, 'underground');
+      const afterCount = window.__gameStore.getState().stations.size;
+
+      const stations = Array.from(window.__gameStore.getState().stations.values());
+      return {
+        subwayStation: stations.find(st => st.x === 59 && st.z === 64) ?? null,
+        beforeCount,
+        afterCount,
+      };
+    })()`);
+    expect(result.subwayStation).toBeTruthy();
+    expect(result.subwayStation.type).toBe('underground');
+    // 地上線路タイルへの地下鉄駅建設は拒否され、駅数は増えない
+    expect(result.afterCount).toBe(result.beforeCount);
+  });
+});
+
+test.describe('Diagram Loop Modes', () => {
+  test('one-way schedule terminates the train at the final stop, and restartTerminatedTrain resumes it in reverse', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      for (let i = 10; i < 20; i++) s.placeTrack(i, 25, i + 1, 25);
+      s.buildStation(10, 25);
+      s.buildStation(20, 25);
+      const stations = Array.from(window.__gameStore.getState().stations.values());
+      const stationA = stations.find(st => st.x === 10 && st.z === 25);
+      const stationB = stations.find(st => st.x === 20 && st.z === 25);
+
+      s.setSelectedTrainType('local');
+      s.placeTrain(stationA.id);
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      s.updateTrainSchedule(train.id, {
+        stops: [
+          { stationId: stationA.id, action: 'stop', waitTime: 5 },
+          { stationId: stationB.id, action: 'stop', waitTime: 5 },
+        ],
+        currentStopIndex: 0,
+        loopMode: 'one-way',
+      });
+
+      for (let i = 0; i < 2000; i++) s.tick();
+      const afterArrival = window.__gameStore.getState().trains.get(train.id);
+
+      s.restartTerminatedTrain(train.id);
+      const afterRestart = window.__gameStore.getState().trains.get(train.id);
+
+      return {
+        terminatedState: afterArrival.state,
+        terminatedFlag: afterArrival.terminated,
+        restartedState: afterRestart.state,
+        restartedFlag: afterRestart.terminated,
+      };
+    })()`);
+    expect(result.terminatedState).toBe('stopped');
+    expect(result.terminatedFlag).toBe(true);
+    expect(result.restartedState).toBe('running');
+    expect(result.restartedFlag).toBe(false);
+  });
+});
+
+test.describe('Procedural Terrain: Hills, Mountains & Forest', () => {
+  test('generated map includes hill, mountain and forest tiles', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const counts = await gameEval(page, `(() => {
+      const map = window.__gameStore.getState().map;
+      const counts = {};
+      for (let x = 0; x < map.length; x++) {
+        for (let z = 0; z < map[x].length; z++) {
+          const t = map[x][z].terrain;
+          counts[t] = (counts[t] || 0) + 1;
+        }
+      }
+      return counts;
+    })()`);
+    expect(counts.flat).toBeGreaterThan(0);
+    expect(counts.hill).toBeGreaterThan(0);
+    expect(counts.mountain).toBeGreaterThan(0);
+    expect(counts.forest).toBeGreaterThan(0);
+    expect(counts.water).toBeGreaterThan(0);
+  });
+});
+
+test.describe('Sound Connection', () => {
+  test('adjusting volume sliders in the settings panel does not throw', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('o');
+    await expect(page.getByText('マスター音量')).toBeVisible();
+
+    const sliders = page.locator('input[type="range"]');
+    await sliders.nth(0).fill('80'); // マスター音量
+    await sliders.nth(1).fill('10'); // BGM
+    await sliders.nth(2).fill('90'); // 効果音
+    await page.waitForTimeout(300);
+
+    // 建設操作でplayBuildSoundも経由させる
+    await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      s.placeTrack(10, 25, 11, 25);
+      s.buildStation(10, 25);
+    })()`);
+    await page.waitForTimeout(300);
+
+    expect(errors).toHaveLength(0);
+  });
+});
+
+test.describe('Tutorial', () => {
+  test('stepping through all tutorial steps completes it and returns to playing', async ({ page }) => {
+    await page.addInitScript(() => localStorage.removeItem('atrain-tutorial-done'));
+    await page.goto('/');
+    await waitForStore(page);
+    await page.getByRole('button', { name: '新しいゲーム' }).click();
+
+    const phaseAfterStart = await gameEval(page, `window.__gameStore.getState().gamePhase`);
+    expect(phaseAfterStart).toBe('tutorial');
+    await expect(page.getByText(/ステップ 1 \//)).toBeVisible();
+
+    const stepCount = await gameEval(page, `window.__gameStore.getState().tutorialStep`);
+    expect(stepCount).toBe(0);
+
+    // 「次へ」を末尾まで押し続け、最後は「完了」になる
+    for (let i = 0; i < 9; i++) {
+      await page.getByRole('button', { name: /^(次へ|完了)$/ }).click();
+    }
+
+    const result = await page.evaluate(() => ({
+      gamePhase: (window as any).__gameStore.getState().gamePhase,
+      tutorialDone: localStorage.getItem('atrain-tutorial-done'),
+    }));
+    expect(result.gamePhase).toBe('playing');
+    expect(result.tutorialDone).toBe('1');
+  });
+});
