@@ -13,19 +13,41 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+// 動径バイアス: マップ中心からの距離に応じて0(中心)→1(外周)へ滑らかに増加する係数。
+// centerRadius以内は常に0（丘陵・山岳を出現させない＝都市開発の中心地を保証）、
+// edgeRadius以遠は1（丘陵・山岳が出現しやすい＝外周部に偏らせる）。
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+// GAME_DESIGN.md 2.1節: マップ中央部（半径約40タイル）は平野を保証する動径バイアスを適用し、
+// 中心から離れるほど丘陵・山岳が出現しやすくする（山岳はマップ外周部に偏る）。
+const CENTER_FLAT_RADIUS = 40;
+const EDGE_BIAS_RADIUS = 62;
+// 地形種別の閾値（scratchpadでシード42/101/202/303/7/999を用いて検証し、
+// 陸地（非水域）に対する割合が目安: 平地65-75% / 丘陵10-15% / 山岳5-10% / 森林8-12% に収まるよう調整済み）
+const MOUNTAIN_THRESHOLD = 0.56;
+const HILL_THRESHOLD = 0.40;
+const FOREST_THRESHOLD = 0.68;
+
 export function generateTerrain(seed: number = 42): MapTile[][] {
   const rng = mulberry32(seed);
   const noise2D = createNoise2D(rng);
+  // 丘陵・山岳の起伏（ruggedness）用と森林の群生パターン用に、
+  // 高さ・川生成とは独立した別のノイズチャンネルを使う（互いの模様が相関しないように種をずらす）
+  const noise2DRugged = createNoise2D(mulberry32(seed + 777));
+  const noise2DForest = createNoise2D(mulberry32(seed + 1234));
 
   // Helper: multi-octave noise
-  function fbm(x: number, z: number, octaves: number, frequency: number, lacunarity: number, gain: number): number {
+  function fbm(fn: (x: number, z: number) => number, x: number, z: number, octaves: number, frequency: number, lacunarity: number, gain: number): number {
     let value = 0;
     let amplitude = 1;
     let freq = frequency;
     let totalAmplitude = 0;
 
     for (let i = 0; i < octaves; i++) {
-      value += amplitude * noise2D(x * freq, z * freq);
+      value += amplitude * fn(x * freq, z * freq);
       totalAmplitude += amplitude;
       amplitude *= gain;
       freq *= lacunarity;
@@ -35,6 +57,8 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
   }
 
   const map: MapTile[][] = [];
+  const cx = GRID_SIZE / 2;
+  const cz = GRID_SIZE / 2;
 
   for (let x = 0; x < GRID_SIZE; x++) {
     map[x] = [];
@@ -44,7 +68,7 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
       const nz = z / GRID_SIZE;
 
       // Base height using fbm
-      let height = fbm(nx, nz, 6, 3.0, 2.0, 0.5);
+      let height = fbm(noise2D, nx, nz, 6, 3.0, 2.0, 0.5);
 
       // Remap from [-1,1] to [0,1]
       height = (height + 1) / 2;
@@ -67,17 +91,38 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
       // Map height to 0-10 scale
       const tileHeight = Math.round(height * 10);
 
-      // 地形判定: 水域以外はすべて平地（高低差なし）
       let terrain: TerrainType;
+      let tileFieldHeight: number;
+
       if (tileHeight <= 1) {
         terrain = 'water';
+        tileFieldHeight = tileHeight;
       } else {
-        terrain = 'flat';
+        // 動径バイアス: 中心から近いほど0（平野保証）、外周に近いほど1に近づく
+        const dist = Math.sqrt((x - cx) ** 2 + (z - cz) ** 2);
+        const radialBias = smoothstep(CENTER_FLAT_RADIUS, EDGE_BIAS_RADIUS, dist);
+
+        // 丘陵・山岳の起伏ノイズ（0-1に正規化）。動径バイアスと掛け合わせることで
+        // 「起伏が強い場所」かつ「中心から離れた場所」でのみ丘陵・山岳が出現する
+        const ruggedness = (fbm(noise2DRugged, nx, nz, 4, 1.5, 2.0, 0.5) + 1) / 2;
+        const combined = ruggedness * radialBias;
+
+        if (combined > MOUNTAIN_THRESHOLD) {
+          terrain = 'mountain';
+          tileFieldHeight = Math.round(8 + ruggedness * 2); // 8-10
+        } else if (combined > HILL_THRESHOLD) {
+          terrain = 'hill';
+          tileFieldHeight = Math.round(6 + ruggedness * 2); // 6-8
+        } else {
+          // 平地: fbmの高さノイズをそのまま起伏として使う（川沿い・低地はvalleyBoostで色分けされる）
+          terrain = 'flat';
+          tileFieldHeight = Math.max(2, Math.min(6, Math.round(2 + height * 4))); // 2-6
+        }
       }
 
       map[x][z] = {
         terrain,
-        height: terrain === 'water' ? tileHeight : 3,
+        height: tileFieldHeight,
         trackIds: [],
         buildingId: null,
         stationId: null,
@@ -107,9 +152,22 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
     }
   }
 
+  // 森林: 平地タイルの一部に群生させる（水域・丘陵・山岳には生成しない）。
+  // 高さ・起伏とは別の低周波ノイズでクラスタ状に分布させる
+  for (let x = 0; x < GRID_SIZE; x++) {
+    for (let z = 0; z < GRID_SIZE; z++) {
+      if (map[x][z].terrain !== 'flat') continue;
+      const nx = x / GRID_SIZE;
+      const nz = z / GRID_SIZE;
+      const forestNoise = (fbm(noise2DForest, nx, nz, 3, 4.0, 2.0, 0.5) + 1) / 2;
+      if (forestNoise > FOREST_THRESHOLD) {
+        map[x][z].terrain = 'forest';
+      }
+    }
+  }
+
   // Ensure a large flat area near center for initial building
-  const cx = Math.floor(GRID_SIZE / 2);
-  const cz = Math.floor(GRID_SIZE / 2);
+  // （森林・丘陵・山岳の判定より後に適用し、初期プレイエリアを確実に平地にする）
   const flatRadius = 8;
   for (let x = cx - flatRadius; x <= cx + flatRadius; x++) {
     for (let z = cz - flatRadius; z <= cz + flatRadius; z++) {

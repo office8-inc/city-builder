@@ -119,6 +119,10 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
       if (tile1.terrain === 'water' || tile2.terrain === 'water') {
         get().addNotification('水上に線路は敷設できません', 'error'); return;
       }
+      // 山岳タイルは地上・高架線路が敷設不可。横断できるのは地下線路（トンネル）のみ（GAME_DESIGN.md 2.2.1節）
+      if (elevation >= 0 && (tile1.terrain === 'mountain' || tile2.terrain === 'mountain')) {
+        get().addNotification('山岳には地下線路（トンネル）のみ敷設できます', 'error'); return;
+      }
     }
 
     const newSegments: typeof segmentDefs = [];
@@ -158,6 +162,11 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
       newTracks.set(id, trackSeg);
       if (map[seg.sx]?.[seg.sz]) map[seg.sx][seg.sz].trackIds.push(id);
       if (map[seg.ex]?.[seg.ez]) map[seg.ex][seg.ez].trackIds.push(id);
+      // 森林タイルへの線路敷設は伐採として扱う（GAME_DESIGN.md v1.0スコープ item7）
+      const t1 = map[seg.sx]?.[seg.sz];
+      const t2 = map[seg.ex]?.[seg.ez];
+      if (t1?.terrain === 'forest') t1.terrain = 'flat';
+      if (t2?.terrain === 'forest') t2.terrain = 'flat';
     }
 
     const newCash = state.constructionMode ? finance.cash : finance.cash - cost;

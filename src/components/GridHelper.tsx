@@ -25,8 +25,11 @@ export function GridOverlay() {
       case 'track_straight':
       case 'track_diagonal':
       case 'track_elevated':
+        // createPlaceTrack: 水上にはどの高度の線路も敷設不可。山岳は地上・高架は敷設不可（地下のみ可）
+        canPlace = tile.terrain !== 'water' && tile.terrain !== 'mountain';
+        break;
       case 'track_underground':
-        // createPlaceTrack: 水上にはどの高度の線路も敷設不可
+        // createPlaceTrack: 水上には敷設不可。山岳は地下線路（トンネル）のみ敷設可
         canPlace = tile.terrain !== 'water';
         break;
       case 'track_remove':
