@@ -478,6 +478,62 @@ test.describe('Save/Load', () => {
     // 本来の地下鉄線1本のみに正しく紐づき、無関係な高架線には紐づかないこと
     expect(result.connectedTracks).toEqual([result.realUndergroundTrackId]);
   });
+
+  test('legacy elevation fallback for non-underground stations still uses majority vote, not the elevation:0 preference (P2-F)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 高架線のみのタイル(71,90)に高架駅を建てる（現行コードのconnectedTracksは
+      // 本来この2本の高架線IDのみ）
+      s.setSelectedTool('track_elevated');
+      s.placeTrack(70, 90, 72, 90);
+      s.setSelectedTool('none');
+      s.buildStation(71, 90, 'elevated');
+
+      const station = Array.from(window.__gameStore.getState().stations.values())[0];
+      const realElevatedTrackIds = [...station.connectedTracks];
+
+      // 駅を建てた後、同じタイル(71,90)を通る地上のスパー線を1本敷設する（=タイルが
+      // レイヤー混在になる。旧・高架駅の交差タイルを模した状況を作るための細工）
+      s.setSelectedTool('track_straight');
+      s.placeTrack(71, 90, 72, 90);
+      s.setSelectedTool('none');
+      const groundTrackId = window.__gameStore.getState().map[71][90].trackIds
+        .find(tid => window.__gameStore.getState().tracks.get(tid).elevation === 0);
+
+      // セーブJSONを、station.elevationが存在しない旧フォーマットへ書き換える。
+      // また、type由来の推定値(elevated=1)が接続線路のどれにも一致しないミスマッチを
+      // 意図的に作るため、本来elevation:1の高架線2本を（P2-Fのテスト目的で）elevation:2へ
+      // 書き換える（実際のゲームではelevation:2は生成され得ない値だが、
+      // 「type由来の推定elevationが接続線路に無い」状況を単体テストとして再現するための細工）。
+      // connectedTracksは全レイヤー混在（高架2本 + 地上スパー線1本）とする
+      s.saveGame();
+      const raw = JSON.parse(localStorage.getItem('atrain-city-save'));
+      const stEntry = raw.stations.find(([id]) => id === station.id);
+      delete stEntry[1].elevation;
+      stEntry[1].connectedTracks = [...realElevatedTrackIds, groundTrackId];
+      for (const [tid, t] of raw.tracks) {
+        if (realElevatedTrackIds.includes(tid)) t.elevation = 2;
+      }
+      localStorage.setItem('atrain-city-save', JSON.stringify(raw));
+
+      // ロードし直す
+      window.__gameStore.getState().loadGame();
+      const loadedStation = window.__gameStore.getState().stations.get(station.id);
+
+      return {
+        elevation: loadedStation.elevation,
+        connectedTracks: [...loadedStation.connectedTracks].sort(),
+        realElevatedTrackIds: realElevatedTrackIds.sort(),
+      };
+    })()`);
+    // type==='underground'ではないため、elevation:0が接続線路に含まれていても優先せず、
+    // セグメント数の多数決（elevation:2が2本、elevation:0が1本 → elevation:2）を採用すること
+    expect(result.elevation).toBe(2);
+    expect(result.connectedTracks).toEqual(result.realElevatedTrackIds);
+  });
 });
 
 test.describe('Console Error Check', () => {

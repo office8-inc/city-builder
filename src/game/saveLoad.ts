@@ -169,19 +169,23 @@ function normalizeStation(s: Station, tracks: Map<string, TrackSegment>): Statio
   // 線路のelevationを駅のelevationとして採用し直す。「セーブに実際に入っている線路との
   // 整合」を「typeからの理論値」より優先することで、旧・地下鉄駅の接続が全滅するのを防ぐ。
   //
-  // このとき、単純なセグメント数の多数決ではなく、まず「elevation:0が接続線路に含まれるか」
-  // を優先して見る（P2-E）。旧地下鉄駅が高架線と交差するタイルにある場合、レガシーな
-  // connectedTracksには全レイヤーのIDが混在しており、例えば地下鉄の終端線1本(クランプにより
-  // elevation:0で記録)+高架のスルー線2本(elevation:1、クランプの影響を受けないため正しい値)
-  // のような構成では、セグメント数の多数決だと本来無関係な高架線(2本)へ誤って駅を紐づけて
-  // しまう。クランプの既知の結果であるelevation:0を優先することで、これを回避する。
-  // elevation:0の線路が接続線路に1本も無い場合のみ、多数決にフォールバックする
+  // このとき、type==='underground'の駅に限り、単純なセグメント数の多数決より先に
+  // 「elevation:0が接続線路に含まれるか」を優先して見る（P2-E/P2-F）。旧地下鉄駅が高架線と
+  // 交差するタイルにある場合、レガシーなconnectedTracksには全レイヤーのIDが混在しており、
+  // 例えば地下鉄の終端線1本(クランプによりelevation:0で記録)+高架のスルー線2本(elevation:1、
+  // クランプの影響を受けないため正しい値)のような構成では、セグメント数の多数決だと本来
+  // 無関係な高架線(2本)へ誤って駅を紐づけてしまう。クランプの既知の結果であるelevation:0を
+  // 優先することで、これを回避する。
+  // 「クランプは常に-1を0にする」という根拠はunderground駅にしか成り立たない（elevated駅の
+  // elevation:1はMath.max(0, elevation)の影響を受けず、クランプによる書き換えが起こり得ない）
+  // ため、この優先ルールはtype==='underground'の場合のみに限定する。それ以外の駅タイプで
+  // type由来のelevationが接続線路に無い場合は、従来通りセグメント数の多数決にフォールバックする
   if (savedElevation === undefined) {
     const connectedElevations = s.connectedTracks
       .map(tid => tracks.get(tid)?.elevation)
       .filter((e): e is number => e !== undefined);
     if (connectedElevations.length > 0 && !connectedElevations.includes(elevation)) {
-      if (connectedElevations.includes(0)) {
+      if (type === 'underground' && connectedElevations.includes(0)) {
         elevation = 0;
       } else {
         const counts = new Map<number, number>();
