@@ -707,6 +707,48 @@ test.describe('Material Transport Pipeline', () => {
     expect(result.destStock).toBeGreaterThan(0);
     expect(result.materialTransportIncome).toBeGreaterThan(0);
   });
+
+  test('freight train does not earn income by loading and unloading at the same station (P2-4 exploit closed)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      // 行き止まりの短い一本線(x=80〜82)。駅は片側の行き止まり(x=80)にのみ置くため、
+      // 列車は物理的な反射で常にこの同じ駅へ戻ってくる（＝同一駅への重複到着を再現する）
+      s.placeTrack(80, 80, 82, 80);
+      s.buildStation(80, 80);
+      const station = Array.from(window.__gameStore.getState().stations.values())[0];
+
+      const map = window.__gameStore.getState().map;
+      map[80][80].materialStock = 100;
+
+      s.setSelectedTrainType('freight');
+      s.placeTrain(station.id);
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      s.updateTrainSchedule(train.id, {
+        stops: [{ stationId: station.id, action: 'stop', waitTime: 5 }],
+        currentStopIndex: 0,
+        loopMode: 'loop',
+      });
+
+      for (let i = 0; i < 3000; i++) s.tick();
+
+      const s2 = window.__gameStore.getState();
+      return {
+        income: s2.finance.quarterlyIncome.materialTransport,
+        materialLoad: s2.trains.get(train.id).materialLoad,
+        loadedAtStationId: s2.trains.get(train.id).loadedAtStationId,
+        stationId: station.id,
+      };
+    })()`);
+
+    // 積み込んだのと同じ駅を何度往復しても、輸送収入は一切発生しない
+    expect(result.income).toBe(0);
+    // 荷降ろしされず積んだまま（同一駅では荷降ろし自体を抑止する）
+    expect(result.materialLoad).toBeGreaterThan(0);
+    expect(result.loadedAtStationId).toBe(result.stationId);
+  });
 });
 
 test.describe('Milestones', () => {
@@ -784,6 +826,62 @@ test.describe('Scenario Time Limit & Clear/Failed Screens', () => {
     await expect(page.getByText('シナリオクリア！')).toBeVisible();
     // 「山間の街おこし」というテキストは通知にも重複して出るため、クリア画面カード内の要素に絞る
     await expect(page.getByText('シナリオクリア！').locator('..').getByText('山間の街おこし')).toBeVisible();
+  });
+
+  test('income objective is judged against the quarter just closed, not the just-reset quarterlyIncome (P1-1)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      const s0 = store.getState();
+
+      // 「海辺の都市計画」シナリオの人口・列車数の目標は状態を直接注入・実列車配置で満たしておき、
+      // 収入目標(四半期収入1億円)だけが焦点になるようにする。列車10両分の建設費を賄えるよう資金を確保
+      store.setState({ finance: { ...s0.finance, cash: 5_000_000_000 } });
+      s0.placeTrack(40, 40, 41, 40);
+      s0.buildStation(40, 40);
+      const trainStation = Array.from(store.getState().stations.values())[0];
+      s0.setSelectedTrainType('local');
+      for (let i = 0; i < 10; i++) s0.placeTrain(trainStation.id);
+
+      store.setState({
+        buildings: new Map([['pop_test', {
+          id: 'pop_test', x: 5, z: 5, type: 'residential', subtype: '__scenario_test__',
+          level: 1, width: 1, depth: 1, height: 1, residents: 20000, workers: 0,
+        }]]),
+      });
+
+      // ちょうど四半期末(月初でquarterlyIncomeが0にリセットされるタイミング)に
+      // 収入目標を達成させる: 四半期決算のリセットは月1/4/7/10の day=1, hour=0, minute=0で走るため、
+      // 3月末(このゲームの暦は1ヶ月=30日固定)23:50から1tick進めて4月1日0:00に到達させる
+      const s = store.getState();
+      store.setState({
+        finance: {
+          ...s.finance,
+          quarterlyIncome: { railFare: 150_000_000, subsidiary: 0, other: 0, landRent: 0, materialTransport: 0 },
+        },
+        scenarioId: 'seaside_city',
+        scenarioStartYear: 2024,
+        scenarioCleared: false,
+        gamePhase: 'playing',
+        gameTime: { year: 2024, month: 3, day: 30, hour: 23, minute: 50 },
+        lastLevelUpMonth: 0,
+        lastDevelopmentDay: 0,
+      });
+      store.getState().tick();
+
+      const state = store.getState();
+      return {
+        gamePhase: state.gamePhase,
+        scenarioCleared: state.scenarioCleared,
+        quarterlyIncomeAfter: state.finance.quarterlyIncome,
+      };
+    })()`);
+    expect(result.gamePhase).toBe('scenario_clear');
+    expect(result.scenarioCleared).toBe(true);
+    // 判定後、quarterlyIncomeは通常どおり0にリセットされていること（判定用の一時値が漏れ残っていない）
+    const qi = result.quarterlyIncomeAfter;
+    expect(qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport).toBe(0);
   });
 
   test('exceeding the time limit without completing objectives shows the failed screen, and continuing returns to free play', async ({ page }) => {
@@ -891,6 +989,54 @@ test.describe('Diagram Loop Modes', () => {
     expect(result.terminatedFlag).toBe(true);
     expect(result.restartedState).toBe('running');
     expect(result.restartedFlag).toBe(false);
+  });
+
+  test('bounce schedule reverses direction at a through-station terminal, not just at a physical track dead-end', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      // x=10〜30の一本の直線区間。終端駅は途中のx=20に置き、その先(20→30)も
+      // 線路が続く＝終端駅は物理的な行き止まりではない（P1-2で報告された状況）
+      for (let i = 10; i < 30; i++) s.placeTrack(i, 29, i + 1, 29);
+      s.buildStation(10, 29);
+      s.buildStation(20, 29);
+      const stations = Array.from(window.__gameStore.getState().stations.values());
+      const stationA = stations.find(st => st.x === 10 && st.z === 29);
+      const stationTerm = stations.find(st => st.x === 20 && st.z === 29);
+
+      s.setSelectedTrainType('local');
+      s.placeTrain(stationA.id);
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      s.updateTrainSchedule(train.id, {
+        stops: [
+          { stationId: stationA.id, action: 'stop', waitTime: 5 },
+          { stationId: stationTerm.id, action: 'stop', waitTime: 5 },
+        ],
+        currentStopIndex: 0,
+        loopMode: 'bounce',
+      });
+
+      let maxX = -Infinity;
+      let reachedTerminal = false;
+      let minXAfterTerminal = Infinity;
+      for (let i = 0; i < 4000; i++) {
+        s.tick();
+        const t = window.__gameStore.getState().trains.get(train.id);
+        const seg = window.__gameStore.getState().tracks.get(t.currentSegmentId);
+        if (!seg) continue;
+        const x = seg.startX + (seg.endX - seg.startX) * t.positionOnSegment;
+        if (x > maxX) maxX = x;
+        if (x >= 19.5) reachedTerminal = true;
+        if (reachedTerminal && x < minXAfterTerminal) minXAfterTerminal = x;
+      }
+      return { maxX, reachedTerminal, minXAfterTerminal };
+    })()`);
+    expect(result.reachedTerminal).toBe(true);
+    // 終端駅(x=20)の先、行き止まり(x=30)へ向かって暴走していないこと
+    expect(result.maxX).toBeLessThan(21);
+    // 折り返して起点(x=10)付近まで正しく戻ってきていること
+    expect(result.minXAfterTerminal).toBeLessThan(11);
   });
 });
 

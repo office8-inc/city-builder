@@ -137,9 +137,22 @@ interface SerializedStateV4 {
 type SerializedState = SerializedStateV1 | SerializedStateV2 | SerializedStateV3 | SerializedStateV4;
 
 // v1.0（terminated追加）より前のセーブにはtrain.terminatedが存在しないため、
-// ロード時にデフォルト値(false)で補完する
+// ロード時にデフォルト値(false)で補完する。loadedAtStationId（同一駅での貨物輸送収入
+// 不正取得防止）も同様に、それ以前のセーブには存在しないためnullで補完する
 function normalizeTrain(t: Train): Train {
-  return { ...t, terminated: (t as unknown as Partial<Train>).terminated ?? false };
+  return {
+    ...t,
+    terminated: (t as unknown as Partial<Train>).terminated ?? false,
+    loadedAtStationId: (t as unknown as Partial<Train>).loadedAtStationId ?? null,
+  };
+}
+
+// 駅の地上/高架/地下レイヤー整合性修正より前のセーブにはstation.elevationが存在しない
+// ため、駅種別(type)から決定論的に復元してロード時に補完する
+function normalizeStation(s: Station): Station {
+  const type = (s as unknown as Partial<Station>).type ?? 'ground_small';
+  const defaultElevation = type === 'underground' ? -1 : type === 'elevated' ? 1 : 0;
+  return { ...s, type, elevation: (s as unknown as Partial<Station>).elevation ?? defaultElevation };
 }
 
 // v1.0（資材輸送収入 materialTransport 追加）より前のセーブには存在しないため、
@@ -247,7 +260,7 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
 
   const stations = new Map<string, Station>();
   for (const [id, s] of data.stations) {
-    stations.set(id, { ...s, type: (s as unknown as Partial<Station>).type ?? 'ground_small' });
+    stations.set(id, normalizeStation(s));
   }
 
   const subsidiaries = new Map<string, Subsidiary>();
@@ -294,7 +307,7 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
   return {
     map: data.map,
     tracks: new Map(data.tracks),
-    stations: new Map(data.stations),
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
@@ -332,7 +345,7 @@ function loadV3(data: SerializedStateV3): Partial<GameState> {
   return {
     map: data.map,
     tracks: new Map(data.tracks),
-    stations: new Map(data.stations),
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
@@ -369,7 +382,7 @@ function loadV4(data: SerializedStateV4): Partial<GameState> {
   return {
     map: data.map,
     tracks: new Map(data.tracks),
-    stations: new Map(data.stations),
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),

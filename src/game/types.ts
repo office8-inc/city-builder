@@ -37,6 +37,9 @@ export interface Station {
   dailyPassengers: number;
   influenceRadius: number;
   activityLevel: number;
+  // 駅が属する線路の高度(elevation)。地上=0/高架=1/地下=-1。connectedTracks・列車配置・
+  // 到着判定を、地上/高架/地下が混在するタイルでも正しいレイヤーに絞り込むために使う
+  elevation: number;
 }
 
 // === Train ===
@@ -59,6 +62,9 @@ export interface Train {
   state: 'running' | 'stopped' | 'waiting';
   waitTimer: number;
   materialLoad: number;
+  // 貨物列車が現在の積荷を積み込んだ駅のID（積載0のときはnull）。同一駅での
+  // 積み下ろしによる不正な輸送収入（同じ場所で積んで即降ろす）を防ぐために使う
+  loadedAtStationId: string | null;
   // 片道(one-way)運行で終端駅に到達し運行終了した状態。state==='stopped'と併用し、
   // 「信号待ち等の一時停止」と区別する。手動再出発（restartTerminatedTrain）まで停止したまま
   terminated: boolean;
@@ -353,6 +359,9 @@ export interface GameState {
   buildSubsidiary: (x: number, z: number) => void;
   removeTrack: (x: number, z: number) => void;
   bulldoze: (x: number, z: number) => void;
+  // 列車をIDで直接撤去する。列車は移動体のため、確認ダイアログ表示中に座標がズレる
+  // bulldoze(x, z)の再実行では対象を取り違える恐れがあり、その回避に使う
+  removeTrainById: (trainId: string) => void;
   setCameraMode: (mode: CameraMode) => void;
   setFollowMode: (mode: FollowMode) => void;
   setFollowTrainId: (id: string | null) => void;

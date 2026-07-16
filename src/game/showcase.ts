@@ -133,7 +133,7 @@ export function generateShowcaseData(map: MapTile[][]): ShowcaseData {
       id: id('sta'), name: def.name,
       x: def.x, z: def.z,
       platforms: def.platforms, platformLength: 1,
-      type: def.type,
+      type: def.type, elevation: 0, // ショーケースの線路は全て地上(elevation: 0)のみ
       connectedTracks: [...tile.trackIds],
       dailyPassengers: 2000, influenceRadius: 10, activityLevel: 80,
     };
@@ -141,7 +141,7 @@ export function generateShowcaseData(map: MapTile[][]): ShowcaseData {
     tile.stationId = station.id;
 
     // 駅周辺に道路を自動生成
-    generateStationRoads(def.x, def.z, map);
+    generateStationRoads(def.x, def.z, map, tracks);
   }
 
   // ===== 3. 列車 =====
@@ -174,6 +174,7 @@ export function generateShowcaseData(map: MapTile[][]): ShowcaseData {
       state: 'running',
       waitTimer: 0,
       materialLoad: 0,
+      loadedAtStationId: null,
       terminated: false,
     };
     trains.set(train.id, train);

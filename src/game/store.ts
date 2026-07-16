@@ -34,7 +34,7 @@ import { saveToLocalStorage, loadFromLocalStorage } from './saveLoad.ts';
 import { updateSignals } from './signals.ts';
 import {
   createPlaceTrack, createBuildStation, createPlaceTrain, createBuildSubsidiary,
-  createRemoveTrack, createBulldoze, createPlaceSignal,
+  createRemoveTrack, createBulldoze, createRemoveTrainById, createPlaceSignal,
   createBuyLand, createSellLand, createSetTileType,
   setNextEntityId,
 } from './actions.ts';
@@ -221,13 +221,18 @@ export const useGameStore = create<GameState>((set, get) => ({
             };
             stoppedAtStation = true;
           } else if (isFinalStop && loopMode === 'bounce' && stops.length > 1) {
-            // 往復運行: 終端駅で停車リストを反転し、そのまま折り返して逆順に辿る
+            // 往復運行: 終端駅で停車リストを反転し、進行方向(direction)も反転させて折り返す。
+            // 終端駅が行き止まりでない通過可能な線路上にある場合、advanceTrainPositionの
+            // セグメント遷移だけでは物理的な進行方向が反転しないため、ここで明示的に反転する。
+            // 反転の基準はこのtick開始時点のtrain.direction（移動後のupdatedTrain.directionではない）。
+            // 物理的な行き止まりで既にadvanceTrainPosition内で反転済みの場合も同じ結果になり整合する
+            const reversedDirection = (-train.direction) as 1 | -1;
             const reversedSchedule = reverseTrainSchedule({ ...train.schedule, currentStopIndex: nextIdx });
             if (nextStop.action === 'stop') {
-              updatedTrain = { ...updatedTrain, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule };
+              updatedTrain = { ...updatedTrain, direction: reversedDirection, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule };
               stoppedAtStation = true;
             } else {
-              updatedTrain = { ...updatedTrain, schedule: reversedSchedule };
+              updatedTrain = { ...updatedTrain, direction: reversedDirection, schedule: reversedSchedule };
             }
           } else if (nextStop.action === 'stop') {
             // 循環運行(loop)、および往復/片道の途中駅は従来通り配列を巡回する
@@ -349,7 +354,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           for (const b of newBuildings) {
             updatedBuildings.set(b.id, b);
             // Generate roads around new buildings
-            generateRoads(b.x, b.z, state.map);
+            generateRoads(b.x, b.z, state.map, state.tracks);
           }
           updates.buildings = updatedBuildings;
           // generateRoadsはmapを直接ミューテートし配列参照は変わらないため、
@@ -424,6 +429,10 @@ export const useGameStore = create<GameState>((set, get) => ({
       const buildings = updates.buildings || state.buildings;
       updates.population = calculatePopulation(buildings);
 
+      // 四半期決算（下のQuarterly report内）でquarterlyIncomeが0にリセットされる場合、
+      // シナリオのincome目標判定にはこのtickで確定した収入（リセット前の値）を使う
+      let quarterlyTotalIncomeSnapshot: number | undefined;
+
       // Process monthly loan decrement
       if (state.loans.length > 0) {
         const monthLoans = (updates.loans || [...state.loans]).map(loan => ({
@@ -445,6 +454,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         const qe = finance.quarterlyExpenses;
         const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport;
         const totalExpenses = qe.trackMaintenance + qe.trainMaintenance + qe.staffCost + qe.subsidiaryRunning + qe.interestPayment;
+        // この四半期の確定収入を保持しておく。下でquarterlyIncomeを0にリセットした後に
+        // シナリオの収入目標判定（income objective）が走ると、リセット後の値では
+        // ちょうど今四半期で達成した収入が判定前に消えてしまうため
+        quarterlyTotalIncomeSnapshot = totalIncome;
 
         const record: QuarterlyRecord = {
           year: newTime.month === 1 ? newTime.year - 1 : newTime.year,
@@ -517,7 +530,7 @@ export const useGameStore = create<GameState>((set, get) => ({
             stations: state.stations,
             trains: state.trains,
             tracks: state.tracks,
-          });
+          }, quarterlyTotalIncomeSnapshot);
           if (allComplete) {
             set({ ...updates, gamePhase: 'scenario_clear', scenarioCleared: true } as GameState);
             get().addNotification(`シナリオ「${scenario.name}」の目標を達成しました！`, 'success');
@@ -551,6 +564,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   buildSubsidiary: createBuildSubsidiary(set, get),
   removeTrack: createRemoveTrack(set, get),
   bulldoze: createBulldoze(set, get),
+  removeTrainById: createRemoveTrainById(set, get),
   placeSignal: createPlaceSignal(set, get),
   buyLand: createBuyLand(set, get),
   sellLand: createSellLand(set, get),

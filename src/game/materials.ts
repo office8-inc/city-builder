@@ -3,6 +3,7 @@ import {
   MATERIAL_PRODUCTION_PER_DAY, MATERIAL_TRANSPORT_RADIUS, MATERIAL_TRANSPORT_INCOME_PER_UNIT,
   TRAIN_TYPES,
 } from './constants.ts';
+import { hasSurfaceBlockingTrack } from './trackUtils.ts';
 
 /**
  * Process material production from factories and material yards.
@@ -114,8 +115,10 @@ export interface FreightCargoResult {
 
 /**
  * 貨物列車が駅に停車した際の積み下ろし処理（GAME_DESIGN.md 2.3.4節）。
- * - 積載0の状態で停車 → 駅周辺のmaterialStockから積載上限まで積み込む
- * - 積載ありの状態で停車 → 全量を駅周辺タイルに荷降ろしし、輸送収入を計上する
+ * - 積載0の状態で停車 → 駅周辺のmaterialStockから積載上限まで積み込む（積載元駅として記録）
+ * - 積載ありの状態で停車 → 積載元駅と異なる駅なら全量を荷降ろしし輸送収入を計上する。
+ *   積載元駅と同じ駅（同一駅・重複ダイヤ）では実質的な輸送が発生していないため、
+ *   荷降ろし・収入発生の両方を抑止し、積んだまま次の駅へ向かわせる
  * 貨物列車以外（materialCapacity===0）は何もしない。
  */
 export function processFreightCargo(train: Train, station: Station, map: GameState['map']): FreightCargoResult {
@@ -125,14 +128,24 @@ export function processFreightCargo(train: Train, station: Station, map: GameSta
   }
 
   if (train.materialLoad > 0) {
+    if (train.loadedAtStationId === station.id) {
+      // 積んだのと同じ駅では荷降ろししない（不正な輸送収入の発生を防止）
+      return { train, incomeDelta: 0, unloadedAmount: 0, loadedAmount: 0 };
+    }
     const unloaded = train.materialLoad;
     depositMaterialNear(station.x, station.z, map, unloaded);
     const incomeDelta = unloaded * MATERIAL_TRANSPORT_INCOME_PER_UNIT;
-    return { train: { ...train, materialLoad: 0 }, incomeDelta, unloadedAmount: unloaded, loadedAmount: 0 };
+    return {
+      train: { ...train, materialLoad: 0, loadedAtStationId: null },
+      incomeDelta, unloadedAmount: unloaded, loadedAmount: 0,
+    };
   }
 
   const loaded = withdrawMaterialNear(station.x, station.z, map, capacity);
-  return { train: { ...train, materialLoad: loaded }, incomeDelta: 0, unloadedAmount: 0, loadedAmount: loaded };
+  return {
+    train: { ...train, materialLoad: loaded, loadedAtStationId: loaded > 0 ? station.id : null },
+    incomeDelta: 0, unloadedAmount: 0, loadedAmount: loaded,
+  };
 }
 
 /**
@@ -195,12 +208,15 @@ export function updateLandValues(state: GameState): void {
 
 /**
  * Check if a tile can have a road placed on it.
+ * 地下線路(elevation===-1)は地表の遮蔽物として扱わない（地表からは見えないため、
+ * トンネルを掘っても地表の道路生成を妨げてはいけない）。
  */
-function canPlaceRoad(nx: number, nz: number, map: GameState['map']): boolean {
+function canPlaceRoad(nx: number, nz: number, map: GameState['map'], tracks: GameState['tracks']): boolean {
   const size = map.length;
   if (nx < 0 || nx >= size || nz < 0 || nz >= size) return false;
   const tile = map[nx][nz];
-  return tile.terrain === 'flat' && !tile.buildingId && !tile.stationId && !tile.subsidiaryId && tile.trackIds.length === 0;
+  return tile.terrain === 'flat' && !tile.buildingId && !tile.stationId && !tile.subsidiaryId &&
+    !hasSurfaceBlockingTrack(tile.trackIds, tracks);
 }
 
 /**
@@ -208,7 +224,7 @@ function canPlaceRoad(nx: number, nz: number, map: GameState['map']): boolean {
  * Places adjacent roads AND extends them to connect to nearby existing roads,
  * creating a connected road network instead of scattered isolated tiles.
  */
-export function generateRoads(x: number, z: number, map: GameState['map'], level: number = 1): void {
+export function generateRoads(x: number, z: number, map: GameState['map'], tracks: GameState['tracks'], level: number = 1): void {
   const size = map.length;
   const adjacentOffsets: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   const placedRoads: [number, number][] = [];
@@ -217,7 +233,7 @@ export function generateRoads(x: number, z: number, map: GameState['map'], level
   for (const [dx, dz] of adjacentOffsets) {
     const nx = x + dx;
     const nz = z + dz;
-    if (canPlaceRoad(nx, nz, map)) {
+    if (canPlaceRoad(nx, nz, map, tracks)) {
       map[nx][nz].roadLevel = Math.max(map[nx][nz].roadLevel, level);
       placedRoads.push([nx, nz]);
     }
@@ -242,14 +258,14 @@ export function generateRoads(x: number, z: number, map: GameState['map'], level
         for (let d = 1; d < dist; d++) {
           const fx = rx + dx * d;
           const fz = rz + dz * d;
-          if (canPlaceRoad(fx, fz, map)) {
+          if (canPlaceRoad(fx, fz, map, tracks)) {
             map[fx][fz].roadLevel = Math.max(map[fx][fz].roadLevel, level);
           }
         }
         break;
       }
       // Stop if blocked by building/station/etc
-      if (!canPlaceRoad(tx, tz, map) && map[tx][tz].roadLevel === 0) break;
+      if (!canPlaceRoad(tx, tz, map, tracks) && map[tx][tz].roadLevel === 0) break;
     }
 
     // Step 3: If no existing road found, extend 2 extra tiles to form
@@ -258,7 +274,7 @@ export function generateRoads(x: number, z: number, map: GameState['map'], level
       for (let dist = 1; dist <= 2; dist++) {
         const tx = rx + dx * dist;
         const tz = rz + dz * dist;
-        if (canPlaceRoad(tx, tz, map)) {
+        if (canPlaceRoad(tx, tz, map, tracks)) {
           map[tx][tz].roadLevel = Math.max(map[tx][tz].roadLevel, level);
         } else {
           break;
@@ -272,7 +288,7 @@ export function generateRoads(x: number, z: number, map: GameState['map'], level
  * Generate roads around stations with higher level.
  * Creates a cross-shaped road pattern extending from the station.
  */
-export function generateStationRoads(stationX: number, stationZ: number, map: GameState['map']): void {
+export function generateStationRoads(stationX: number, stationZ: number, map: GameState['map'], tracks: GameState['tracks']): void {
   const size = map.length;
 
   // Fill 5x5 area around station
@@ -282,7 +298,7 @@ export function generateStationRoads(stationX: number, stationZ: number, map: Ga
       const nz = stationZ + dz;
       if (nx < 0 || nx >= size || nz < 0 || nz >= size) continue;
       const tile = map[nx][nz];
-      if (tile.terrain === 'flat' && !tile.buildingId && tile.trackIds.length === 0) {
+      if (tile.terrain === 'flat' && !tile.buildingId && !hasSurfaceBlockingTrack(tile.trackIds, tracks)) {
         tile.roadLevel = Math.max(tile.roadLevel, 2);
       }
     }
@@ -294,7 +310,7 @@ export function generateStationRoads(stationX: number, stationZ: number, map: Ga
     for (let dist = 3; dist <= EXTEND; dist++) {
       const nx = stationX + dx * dist;
       const nz = stationZ + dz * dist;
-      if (canPlaceRoad(nx, nz, map)) {
+      if (canPlaceRoad(nx, nz, map, tracks)) {
         map[nx][nz].roadLevel = Math.max(map[nx][nz].roadLevel, 2);
       } else {
         break;

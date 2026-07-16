@@ -42,22 +42,35 @@ function applyUndergroundTint(mesh: THREE.Mesh, enabled: boolean) {
   const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   for (const mat of materials) {
     if (!mat) continue;
-    const m = mat as THREE.Material & { color?: THREE.Color; opacity: number; transparent: boolean };
+    const m = mat as THREE.Material & { color?: THREE.Color; opacity: number; transparent: boolean; depthTest: boolean };
     if (m.userData.baseOpacity === undefined) {
       m.userData.baseOpacity = m.opacity;
       m.userData.baseTransparent = m.transparent;
+      m.userData.baseDepthTest = m.depthTest;
       if (m.color) m.userData.baseColorHex = m.color.getHex();
     }
     if (enabled) {
       m.transparent = true;
       m.opacity = UNDERGROUND_OPACITY;
-      if (m.color) m.color.setHex(m.userData.baseColorHex).multiplyScalar(UNDERGROUND_DARKEN);
+      // 地上の地形メッシュは不透明でdepthWriteするため、depthTestを有効にしたままだと
+      // 地下オブジェクトは深度テストに落ちて完全に隠れてしまう（「地面越しに透けて見える」
+      // トンネル演出にならない）。depthTestを無効化し、地形の奥にあっても常に半透明で
+      // 描画されるようにする
+      m.depthTest = false;
     } else {
       m.transparent = m.userData.baseTransparent;
       m.opacity = m.userData.baseOpacity;
-      if (m.color && m.userData.baseColorHex !== undefined) m.color.setHex(m.userData.baseColorHex);
+      m.depthTest = m.userData.baseDepthTest;
+    }
+    if (m.color) {
+      if (enabled) m.color.setHex(m.userData.baseColorHex).multiplyScalar(UNDERGROUND_DARKEN);
+      else if (m.userData.baseColorHex !== undefined) m.color.setHex(m.userData.baseColorHex);
     }
   }
+  // depthTest:falseのオブジェクトは深度バッファを無視して描画されるため、通常の描画順
+  // （ジオメトリ登録順）に任せると地上オブジェクトの後に描かれず不安定になりうる。
+  // renderOrderを高くして地上の不透明・半透明オブジェクトより後に描画されるようにする
+  mesh.renderOrder = enabled ? 10 : 0;
 }
 
 /**

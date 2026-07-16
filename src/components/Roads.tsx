@@ -4,6 +4,7 @@ import { useGameStore } from '../game/store.ts';
 import { gridToWorld } from '../utils/grid.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
 import { GRID_SIZE } from '../game/constants.ts';
+import { hasSurfaceBlockingTrack } from '../game/trackUtils.ts';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -120,10 +121,10 @@ export function Roads() {
   const isNight = hour < 6 || hour >= 18;
 
   const { roadTiles, lightPositions } = useMemo(() => {
-    // roadRevisionとtracksは値自体を使わないキャッシュ無効化トリガー
-    // （map内のroadLevel/trackIdsミューテーションを検知するために依存配列へ含める）
+    // roadRevisionは値自体を使わないキャッシュ無効化トリガー
+    // （map内のroadLevel/trackIdsミューテーションを検知するために依存配列へ含める）。
+    // tracksは道路描画可否の判定（地下線路のelevation判定）で実際に使用する
     void roadRevision;
-    void tracks;
     const tiles: RoadTileInfo[] = [];
     const lights: [number, number, number][] = [];
 
@@ -149,8 +150,9 @@ export function Roads() {
     for (let x = 0; x < GRID_SIZE; x++) {
       for (let z = 0; z < GRID_SIZE; z++) {
         const tile = map[x][z];
-        // 建物・駅・子会社があるタイルでも道路を描画（接続の途切れを防ぐ）
-        if (tile.roadLevel > 0 && tile.trackIds.length === 0) {
+        // 建物・駅・子会社があるタイルでも道路を描画（接続の途切れを防ぐ）。
+        // 地下線路(elevation===-1)は地表からは見えないため、道路の描画を妨げる遮蔽物には含めない
+        if (tile.roadLevel > 0 && !hasSurfaceBlockingTrack(tile.trackIds, tracks)) {
           const w = gridToWorld(x, z);
           const h = roadHeights.get(`${x},${z}`) ?? getTileWorldHeight(tile);
           const connectivity = computeRoadConnectivity(x, z, map);

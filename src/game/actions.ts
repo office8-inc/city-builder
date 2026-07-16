@@ -300,23 +300,34 @@ export function createBulldoze(set: SetFn, get: GetFn) {
         get().addNotification(`${station.name}駅を撤去しました`, 'info');
       }
     } else if (target.type === 'train' && target.id) {
-      const train = trains.get(target.id);
-      if (train) {
-        const newTrains = new Map(trains);
-        newTrains.delete(target.id);
-        const updates: Partial<GameState> = { trains: newTrains };
-        if (state.followTrainId === target.id) {
-          updates.followTrainId = null;
-          updates.cameraMode = 'free';
-        }
-        if (state.selectedTrainId === target.id) {
-          updates.selectedTrainId = null;
-        }
-        set(updates);
-        get().addNotification(`${train.name}を撤去しました`, 'info');
-      }
+      removeTrainById(set, get, target.id);
     }
   };
+}
+
+// 列車をIDで直接撤去する共通処理。createBulldoze（座標ベース）とcreateRemoveTrainById
+// （ID直接指定）の両方から使う。列車は移動体のため、確認ダイアログ表示中に別の場所へ
+// 移動している可能性があり、座標の再解決ではなくIDで一意に対象を特定する必要がある
+function removeTrainById(set: SetFn, get: GetFn, trainId: string): void {
+  const state = get();
+  const train = state.trains.get(trainId);
+  if (!train) return;
+  const newTrains = new Map(state.trains);
+  newTrains.delete(trainId);
+  const updates: Partial<GameState> = { trains: newTrains };
+  if (state.followTrainId === trainId) {
+    updates.followTrainId = null;
+    updates.cameraMode = 'free';
+  }
+  if (state.selectedTrainId === trainId) {
+    updates.selectedTrainId = null;
+  }
+  set(updates);
+  get().addNotification(`${train.name}を撤去しました`, 'info');
+}
+
+export function createRemoveTrainById(set: SetFn, get: GetFn) {
+  return (trainId: string) => removeTrainById(set, get, trainId);
 }
 
 export function createBuildStation(set: SetFn, get: GetFn) {
@@ -365,9 +376,15 @@ export function createBuildStation(set: SetFn, get: GetFn) {
     const id = genId('station');
     const name = generateStationName();
     const platforms = sType === 'ground_large' || sType === 'terminal' ? 2 : 1;
+    // 駅のelevation: 地下鉄駅=-1、高架駅=1、それ以外（地上）=0。
+    // 地上/高架/地下が混在するタイルでは、tile.trackIds全部ではなく駅と同じelevationの
+    // 線路IDのみをconnectedTracksに残す。これを怠ると、地上駅なのにconnectedTracks[0]が
+    // 地下線路を指し、列車配置(placeTrain)で地下に列車がスポーンしてしまう
+    const stationElevation = sType === 'underground' ? -1 : sType === 'elevated' ? 1 : 0;
     const station: Station = {
       id, name, x, z, platforms, platformLength: 1,
-      type: sType, connectedTracks: [...tile.trackIds],
+      type: sType, elevation: stationElevation,
+      connectedTracks: tile.trackIds.filter(tid => (state.tracks.get(tid)?.elevation ?? 0) === stationElevation),
       dailyPassengers: 0, influenceRadius: 5, activityLevel: 0,
     };
     const newStations = new Map(stations);
@@ -376,7 +393,7 @@ export function createBuildStation(set: SetFn, get: GetFn) {
     tile.stationId = id;
 
     // Generate road network around the station
-    generateStationRoads(x, z, map);
+    generateStationRoads(x, z, map, state.tracks);
 
     const newCash = state.constructionMode ? finance.cash : finance.cash - cost;
     // generateStationRoadsはmapを直接ミューテートし配列参照は変わらないため、
@@ -411,7 +428,7 @@ export function createPlaceTrain(set: SetFn, get: GetFn) {
       direction: 1, passengers: Math.min(trainType.capacity, stations.size * 50),
       capacity: trainType.capacity,
       schedule: { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
-      state: 'running', waitTimer: 0, materialLoad: 0, terminated: false,
+      state: 'running', waitTimer: 0, materialLoad: 0, loadedAtStationId: null, terminated: false,
     };
     const newTrains = new Map(trains);
     newTrains.set(id, train);

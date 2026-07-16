@@ -56,10 +56,13 @@ export function checkObjectives(
     stations: Map<unknown, unknown>;
     trains: Map<unknown, unknown>;
     tracks: Map<unknown, unknown>;
-  }
+  },
+  // 四半期決算の直後（quarterlyIncomeが0にリセットされた後）に呼ばれる場合、リセット前の
+  // 確定収入をここで渡すことで「達成した瞬間にリセットされて判定漏れする」問題を避ける
+  totalIncomeOverride?: number
 ): { objectives: Scenario['objectives']; allComplete: boolean } {
   const qi = state.finance.quarterlyIncome;
-  const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport;
+  const totalIncome = totalIncomeOverride ?? (qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport);
 
   const objectives = scenario.objectives.map(obj => {
     let current = 0;

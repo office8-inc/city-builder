@@ -150,10 +150,16 @@ function InteractionPlane() {
     } else if (selectedTool === 'bulldoze') {
       const target = getBulldozeTarget(useGameStore.getState(), gridPos.x, gridPos.z);
       if (target.type === 'station' || target.type === 'train' || target.type === 'subsidiary') {
-        // 駅・列車・子会社の撤去は元に戻せないため確認ダイアログを挟む（線路・建物の撤去は確認不要）
+        // 駅・列車・子会社の撤去は元に戻せないため確認ダイアログを挟む（線路・建物の撤去は確認不要）。
+        // 列車は確認ダイアログ表示中もシミュレーションが動き続けて移動してしまうため、
+        // 座標での再解決（bulldoze(x,z)）だと対象がズレうる。IDをキャプチャして直接撤去する
+        const trainId = target.id;
+        const onConfirm = target.type === 'train' && trainId
+          ? () => useGameStore.getState().removeTrainById(trainId)
+          : () => useGameStore.getState().bulldoze(gridPos.x, gridPos.z);
         requestConfirm(
           `${target.name}を撤去します。返金はありません。よろしいですか？`,
-          () => useGameStore.getState().bulldoze(gridPos.x, gridPos.z)
+          onConfirm
         );
       } else {
         bulldoze(gridPos.x, gridPos.z);

@@ -89,6 +89,15 @@ export function getNextSegment(
 }
 
 /**
+ * タイルの線路ID一覧に、地表を遮る線路（地上=0・高架=1+）が含まれるかを判定する。
+ * 地下線路(elevation===-1)は地表からは見えない/通行の邪魔にならないため「遮蔽物」に含めない。
+ * 道路の自動生成・描画可否判定（Roads.tsx / materials.ts）で共通利用する。
+ */
+export function hasSurfaceBlockingTrack(trackIds: string[], tracks: Map<string, TrackSegment>): boolean {
+  return trackIds.some(id => (tracks.get(id)?.elevation ?? 0) !== -1);
+}
+
+/**
  * Get the effective length of a segment (diagonal = sqrt(2), straight = 1).
  */
 function getSegmentLength(segment: TrackSegment): number {
@@ -115,7 +124,9 @@ export function getStationAtPosition(
     const checkX = nearStart ? seg.startX : seg.endX;
     const checkZ = nearStart ? seg.startZ : seg.endZ;
     for (const station of stations.values()) {
-      if (station.x === checkX && station.z === checkZ) {
+      // 座標が一致しても、地上/高架/地下の混在タイルでは別レイヤーの駅の場合があるため、
+      // 列車が現在走っている線路のelevationと駅のelevationが一致するものだけを対象にする
+      if (station.x === checkX && station.z === checkZ && station.elevation === seg.elevation) {
         return station;
       }
     }
