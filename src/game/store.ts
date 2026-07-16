@@ -224,9 +224,21 @@ export const useGameStore = create<GameState>((set, get) => ({
             // 往復運行: 終端駅で停車リストを反転し、進行方向(direction)も反転させて折り返す。
             // 終端駅が行き止まりでない通過可能な線路上にある場合、advanceTrainPositionの
             // セグメント遷移だけでは物理的な進行方向が反転しないため、ここで明示的に反転する。
-            // 反転の基準はこのtick開始時点のtrain.direction（移動後のupdatedTrain.directionではない）。
-            // 物理的な行き止まりで既にadvanceTrainPosition内で反転済みの場合も同じ結果になり整合する
-            const reversedDirection = (-train.direction) as 1 | -1;
+            //
+            // 反転方向の決め方（P2-A）: このtick内でセグメント遷移が起きたか否かで場合分けする。
+            // - 遷移が起きていない場合（真の行き止まりでの反射、または元々境界付近だった場合）:
+            //   tick開始時点のtrain.directionを反転すれば正しい
+            // - 遷移が起きた場合: 遷移先セグメントのstart/end座標がどちらの向きで敷かれているかにより
+            //   「train.directionを単純反転」しただけでは、既にadvanceTrainPosition内で同じ値に
+            //   反転済みで実質的に反転が相殺され、折り返さず通過してしまうことがある。
+            //   この場合は遷移後の占有位置（区間の始点側/終点側どちらにいるか）を基準に、
+            //   同じ境界から今来た区間へ戻る方向を選ぶ（区間のstart/end座標の向きに依存しない）
+            const segmentChanged = updatedTrain.currentSegmentId !== train.currentSegmentId;
+            const reversedDirection = (
+              segmentChanged
+                ? (updatedTrain.positionOnSegment > 0.5 ? 1 : -1)
+                : -train.direction
+            ) as 1 | -1;
             const reversedSchedule = reverseTrainSchedule({ ...train.schedule, currentStopIndex: nextIdx });
             if (nextStop.action === 'stop') {
               updatedTrain = { ...updatedTrain, direction: reversedDirection, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule };

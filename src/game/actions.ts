@@ -368,6 +368,17 @@ export function createBuildStation(set: SetFn, get: GetFn) {
       get().addNotification('高架駅は高架線路の上にのみ建設できます', 'error'); return;
     }
 
+    // 駅のelevation: 地下鉄駅=-1、高架駅=1、それ以外（地上）=0。
+    // 高架+地下のみが通り地上線路が無いタイルなど、駅と同じelevationの線路が1本も
+    // 無い場合はここまでのチェックをすり抜けてしまう（onlyUnderground/onlyElevatedは
+    // 共にfalseになるため）。connectedTracksが空の駅（列車配置も到着判定も機能しない）が
+    // 資金だけ引いて作られてしまうのを防ぐため、対応する線路の存在を明示的に確認する
+    const stationElevation = sType === 'underground' ? -1 : sType === 'elevated' ? 1 : 0;
+    const hasMatchingElevationTrack = tile.trackIds.some(tid => (state.tracks.get(tid)?.elevation ?? 0) === stationElevation);
+    if (!hasMatchingElevationTrack) {
+      get().addNotification('この場所には対応する種別の線路がありません', 'error'); return;
+    }
+
     const cost = STATION_COSTS[sType];
     if (!state.constructionMode && finance.cash < cost) {
       get().addNotification('資金が不足しています', 'error'); return;
@@ -376,11 +387,9 @@ export function createBuildStation(set: SetFn, get: GetFn) {
     const id = genId('station');
     const name = generateStationName();
     const platforms = sType === 'ground_large' || sType === 'terminal' ? 2 : 1;
-    // 駅のelevation: 地下鉄駅=-1、高架駅=1、それ以外（地上）=0。
     // 地上/高架/地下が混在するタイルでは、tile.trackIds全部ではなく駅と同じelevationの
     // 線路IDのみをconnectedTracksに残す。これを怠ると、地上駅なのにconnectedTracks[0]が
     // 地下線路を指し、列車配置(placeTrain)で地下に列車がスポーンしてしまう
-    const stationElevation = sType === 'underground' ? -1 : sType === 'elevated' ? 1 : 0;
     const station: Station = {
       id, name, x, z, platforms, platformLength: 1,
       type: sType, elevation: stationElevation,

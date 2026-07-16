@@ -50,6 +50,12 @@ export function GridOverlay() {
         if (onlyUnderground) canPlace = selectedTool === 'station_underground';
         else if (onlyElevated) canPlace = selectedTool === 'station_elevated';
         else canPlace = selectedTool !== 'station_underground' && selectedTool !== 'station_elevated';
+        // 高架+地下のみが通り地上線路が無いタイルなど、駅種別に対応するelevationの線路が
+        // 1本も無い場合は建設不可（createBuildStationの同条件チェックに合わせる）
+        if (canPlace) {
+          const stationElevation = selectedTool === 'station_underground' ? -1 : selectedTool === 'station_elevated' ? 1 : 0;
+          canPlace = tile.trackIds.some(tid => (tracks.get(tid)?.elevation ?? 0) === stationElevation);
+        }
         break;
       }
       case 'train_place':

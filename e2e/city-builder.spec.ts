@@ -317,6 +317,60 @@ test.describe('Save/Load', () => {
     const popAfter = await gameEval(page, `window.__gameStore.getState().population`);
     expect(popAfter).toBe(popBefore);
   });
+
+  test('loading a pre-P2-5 save re-filters a mixed-layer station\'s connectedTracks by elevation (P2-B)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 地上+地下が混在するタイル(51,50)に地上駅を建てる（現行コードは既にconnectedTracksを
+      // elevation:0のみに絞り込むため、正常系ではこのバグは再現しない）
+      s.setSelectedTool('track_straight');
+      s.placeTrack(50, 50, 52, 50);
+      s.setSelectedTool('track_underground');
+      s.placeTrack(50, 50, 52, 50);
+      s.setSelectedTool('none');
+      s.buildStation(51, 50);
+
+      const station = Array.from(window.__gameStore.getState().stations.values())[0];
+      const groundTrackId = station.connectedTracks[0];
+      const tile = window.__gameStore.getState().map[51][50];
+      const tracks = window.__gameStore.getState().tracks;
+      const undergroundTrackId = tile.trackIds.find(tid => tracks.get(tid).elevation === -1);
+
+      // セーブしたJSONを、P2-5修正より前のフォーマット（station.elevationが存在せず、
+      // connectedTracksに地下線路IDも混在＝地下が先頭）へ意図的に書き換えてlocalStorageへ戻す
+      s.saveGame();
+      const raw = JSON.parse(localStorage.getItem('atrain-city-save'));
+      const entry = raw.stations.find(([id]) => id === station.id);
+      delete entry[1].elevation;
+      entry[1].connectedTracks = [undergroundTrackId, groundTrackId];
+      localStorage.setItem('atrain-city-save', JSON.stringify(raw));
+
+      // ロードし直す
+      window.__gameStore.getState().loadGame();
+      const loadedStation = window.__gameStore.getState().stations.get(station.id);
+
+      // 修復されたconnectedTracksで列車を配置し、地上線路上にスポーンすることを確認
+      s.setSelectedTrainType('local');
+      s.placeTrain(station.id);
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      const trainSegElevation = window.__gameStore.getState().tracks.get(train.currentSegmentId).elevation;
+
+      return {
+        elevation: loadedStation.elevation,
+        connectedTracks: loadedStation.connectedTracks,
+        groundTrackId,
+        trainSegElevation,
+      };
+    })()`);
+    expect(result.elevation).toBe(0);
+    // 地下線路IDは除去され、地上線路IDのみが残っていること
+    expect(result.connectedTracks).toEqual([result.groundTrackId]);
+    // 列車は地上(elevation:0)の線路上にスポーンすること（地下にスポーンしていない）
+    expect(result.trainSegElevation).toBe(0);
+  });
 });
 
 test.describe('Console Error Check', () => {
@@ -945,6 +999,37 @@ test.describe('Underground Track & Subway Station', () => {
     // 地上線路タイルへの地下鉄駅建設は拒否され、駅数は増えない
     expect(result.afterCount).toBe(result.beforeCount);
   });
+
+  test('station build is rejected on a tile with only elevated+underground track and no ground-level track (P2-C)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 高架線路と地下線路のみを敷設し、地上(elevation:0)の線路は存在しないタイルを作る
+      s.setSelectedTool('track_elevated');
+      s.placeTrack(95, 95, 97, 95);
+      s.setSelectedTool('track_underground');
+      s.placeTrack(95, 95, 97, 95);
+      s.setSelectedTool('none');
+
+      const cashBeforeStation = window.__gameStore.getState().finance.cash;
+      // stationTypeを指定しない場合のデフォルトはground_small。onlyUnderground/onlyElevated
+      // が共にfalseになるため、旧チェックをすり抜けて建設できてしまっていた
+      s.buildStation(96, 95);
+
+      const state = window.__gameStore.getState();
+      return {
+        stationCount: state.stations.size,
+        cashUnchanged: state.finance.cash === cashBeforeStation,
+        tileStationId: state.map[96][95].stationId,
+      };
+    })()`);
+    expect(result.stationCount).toBe(0);
+    expect(result.tileStationId).toBeFalsy();
+    // 建設が拒否され、駅の建設費は引かれていないこと
+    expect(result.cashUnchanged).toBe(true);
+  });
 });
 
 test.describe('Diagram Loop Modes', () => {
@@ -1034,6 +1119,76 @@ test.describe('Diagram Loop Modes', () => {
     })()`);
     expect(result.reachedTerminal).toBe(true);
     // 終端駅(x=20)の先、行き止まり(x=30)へ向かって暴走していないこと
+    expect(result.maxX).toBeLessThan(21);
+    // 折り返して起点(x=10)付近まで正しく戻ってきていること
+    expect(result.minXAfterTerminal).toBeLessThan(11);
+  });
+
+  test('bounce reversal is correct when the schedule is applied exactly as the train crosses into a reversed-orientation segment (P2-A)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      const s = store.getState();
+      // 起点側(x=10〜20)は増加方向で敷設（各区間はstartX<endX）
+      s.placeTrack(10, 33, 20, 33);
+      // 終端駅の先(x=20〜30)はあえて減少方向(30→20)に敷設し、各区間のstart/end座標を
+      // 反転させる（startX>endX）。P2-A: この向きの区間へ遷移する瞬間にupdatedTrain.direction
+      // は既に-train.directionへ反転済みになっており、単純な-train.direction代入では
+      // 反転が相殺されて折り返さず通過してしまうことがあった
+      s.placeTrack(30, 33, 20, 33);
+      s.buildStation(10, 33);
+      s.buildStation(20, 33);
+      const stations = Array.from(store.getState().stations.values());
+      const stationA = stations.find(st => st.x === 10 && st.z === 33);
+      const stationTerm = stations.find(st => st.x === 20 && st.z === 33);
+
+      s.setSelectedTrainType('local');
+      s.placeTrain(stationA.id);
+      const train = Array.from(store.getState().trains.values())[0];
+      const approachSeg = Array.from(store.getState().tracks.values())
+        .find(t => t.startX === 19 && t.endX === 20 && t.startZ === 33);
+
+      // P2-Aの競合は「終端駅の1tick手前にいる状態でbounceダイヤが適用/編集される」ケースで
+      // 起きる。通常の走行では到着判定(positionOnSegment>0.85)がセグメント境界(1.0)より
+      // 十分手前で発火するため、この競合の再現には手動で「境界を跨ぐ直前」まで進めてから
+      // ダイヤを適用する必要がある
+      const newTrains = new Map(store.getState().trains);
+      newTrains.set(train.id, {
+        ...store.getState().trains.get(train.id),
+        currentSegmentId: approachSeg.id,
+        positionOnSegment: 0.99,
+        direction: 1,
+        state: 'running',
+        schedule: { stops: [], currentStopIndex: 0, loopMode: 'bounce' },
+      });
+      store.setState({ trains: newTrains });
+      store.getState().updateTrainSchedule(train.id, {
+        stops: [
+          { stationId: stationA.id, action: 'stop', waitTime: 5 },
+          { stationId: stationTerm.id, action: 'stop', waitTime: 5 },
+        ],
+        currentStopIndex: 0,
+        loopMode: 'bounce',
+      });
+
+      let maxX = -Infinity;
+      let reachedTerminal = false;
+      let minXAfterTerminal = Infinity;
+      for (let i = 0; i < 4000; i++) {
+        store.getState().tick();
+        const t = store.getState().trains.get(train.id);
+        const seg = store.getState().tracks.get(t.currentSegmentId);
+        if (!seg) continue;
+        const x = seg.startX + (seg.endX - seg.startX) * t.positionOnSegment;
+        if (x > maxX) maxX = x;
+        if (x >= 19.5) reachedTerminal = true;
+        if (reachedTerminal && x < minXAfterTerminal) minXAfterTerminal = x;
+      }
+      return { maxX, reachedTerminal, minXAfterTerminal };
+    })()`);
+    expect(result.reachedTerminal).toBe(true);
+    // 終端駅(x=20)の先、逆向き区間(x=30)へ向かって暴走していないこと
     expect(result.maxX).toBeLessThan(21);
     // 折り返して起点(x=10)付近まで正しく戻ってきていること
     expect(result.minXAfterTerminal).toBeLessThan(11);

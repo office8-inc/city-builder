@@ -148,11 +148,19 @@ function normalizeTrain(t: Train): Train {
 }
 
 // 駅の地上/高架/地下レイヤー整合性修正より前のセーブにはstation.elevationが存在しない
-// ため、駅種別(type)から決定論的に復元してロード時に補完する
-function normalizeStation(s: Station): Station {
+// ため、駅種別(type)から決定論的に復元してロード時に補完する。
+// また、その修正より前のセーブは connectedTracks に地上/高架/地下混在タイルの
+// 全レイヤーの線路IDが入っている可能性がある（例: 地上駅なのに地下線路IDも含む）。
+// 補完したelevationと一致しない線路IDが残っていると、列車配置(placeTrain)が誤ったIDを
+// 選んだり、新しい到着判定（elevation一致チェック）でその駅へ永遠に到着できなくなるため、
+// ロード済みのtracksマップと突き合わせて駅と同じelevationの線路IDのみに絞り込み直す
+// （P2-5修正以降のセーブは元々絞り込み済みのため、フィルタしても結果は変わらない）
+function normalizeStation(s: Station, tracks: Map<string, TrackSegment>): Station {
   const type = (s as unknown as Partial<Station>).type ?? 'ground_small';
   const defaultElevation = type === 'underground' ? -1 : type === 'elevated' ? 1 : 0;
-  return { ...s, type, elevation: (s as unknown as Partial<Station>).elevation ?? defaultElevation };
+  const elevation = (s as unknown as Partial<Station>).elevation ?? defaultElevation;
+  const connectedTracks = s.connectedTracks.filter(tid => (tracks.get(tid)?.elevation ?? 0) === elevation);
+  return { ...s, type, elevation, connectedTracks };
 }
 
 // v1.0（資材輸送収入 materialTransport 追加）より前のセーブには存在しないため、
@@ -258,16 +266,8 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
     }));
   }
 
-  const stations = new Map<string, Station>();
-  for (const [id, s] of data.stations) {
-    stations.set(id, normalizeStation(s));
-  }
-
-  const subsidiaries = new Map<string, Subsidiary>();
-  for (const [id, s] of data.subsidiaries) {
-    subsidiaries.set(id, { ...s, level: (s as unknown as Partial<Subsidiary>).level ?? 1 });
-  }
-
+  // stationのconnectedTracks絞り込み(normalizeStation)にelevation情報が必要なため、
+  // tracksをstationsより先に構築する
   const tracks = new Map<string, TrackSegment>();
   for (const [id, t] of data.tracks) {
     tracks.set(id, {
@@ -275,6 +275,16 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
       direction: (t as unknown as Partial<TrackSegment>).direction ?? (t.startZ === t.endZ ? 'E' : 'S'),
       elevation: (t as unknown as Partial<TrackSegment>).elevation ?? 0,
     });
+  }
+
+  const stations = new Map<string, Station>();
+  for (const [id, s] of data.stations) {
+    stations.set(id, normalizeStation(s, tracks));
+  }
+
+  const subsidiaries = new Map<string, Subsidiary>();
+  for (const [id, s] of data.subsidiaries) {
+    subsidiaries.set(id, { ...s, level: (s as unknown as Partial<Subsidiary>).level ?? 1 });
   }
 
   return {
@@ -304,10 +314,14 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
   setNextEntityId(data.nextEntityId);
   setNextBuildingId(data.nextBuildingId);
 
+  // stationのconnectedTracks絞り込み(normalizeStation)にelevation情報が必要なため、
+  // tracksを先に構築しておく
+  const tracks = new Map(data.tracks);
+
   return {
     map: data.map,
-    tracks: new Map(data.tracks),
-    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
+    tracks,
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s, tracks)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
@@ -342,10 +356,14 @@ function loadV3(data: SerializedStateV3): Partial<GameState> {
   setNextEntityId(data.nextEntityId);
   setNextBuildingId(data.nextBuildingId);
 
+  // stationのconnectedTracks絞り込み(normalizeStation)にelevation情報が必要なため、
+  // tracksを先に構築しておく
+  const tracks = new Map(data.tracks);
+
   return {
     map: data.map,
-    tracks: new Map(data.tracks),
-    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
+    tracks,
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s, tracks)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
@@ -379,10 +397,14 @@ function loadV4(data: SerializedStateV4): Partial<GameState> {
   setNextEntityId(data.nextEntityId);
   setNextBuildingId(data.nextBuildingId);
 
+  // stationのconnectedTracks絞り込み(normalizeStation)にelevation情報が必要なため、
+  // tracksを先に構築しておく
+  const tracks = new Map(data.tracks);
+
   return {
     map: data.map,
-    tracks: new Map(data.tracks),
-    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s)])),
+    tracks,
+    stations: new Map(data.stations.map(([id, s]) => [id, normalizeStation(s, tracks)])),
     trains: new Map(data.trains.map(([id, t]) => [id, normalizeTrain(t)])),
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
