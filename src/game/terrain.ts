@@ -109,15 +109,20 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
 
         if (combined > MOUNTAIN_THRESHOLD) {
           terrain = 'mountain';
-          tileFieldHeight = Math.round(8 + ruggedness * 2); // 8-10
         } else if (combined > HILL_THRESHOLD) {
           terrain = 'hill';
-          tileFieldHeight = Math.round(6 + ruggedness * 2); // 6-8
         } else {
-          // 平地: fbmの高さノイズをそのまま起伏として使う（川沿い・低地はvalleyBoostで色分けされる）
           terrain = 'flat';
-          tileFieldHeight = Math.max(2, Math.min(6, Math.round(2 + height * 4))); // 2-6
         }
+
+        // 高さは地形タイプ（flat/hill/mountain）ごとに不連続な帯（例: 平地2-6, 丘陵6-8）へ
+        // ブラケット分けするのではなく、種別判定に使ったcombinedと同じ連続値から算出する。
+        // こうすることで丘陵/山岳としきい値のすぐ両側にある平地タイルの高さが近い値になり、
+        // 線路（Tracks.tsxは2タイル間の平均高さに水平に線路を置くだけで傾斜をつけない）や
+        // 建物が地形の境界で大きな段差に浮く/めり込む見た目を防ぐ（種別の色だけが変わり、
+        // 高さはなだらかに連続する）
+        const elevation01 = Math.min(1, Math.max(combined, height * 0.4));
+        tileFieldHeight = Math.max(2, Math.min(10, Math.round(2 + elevation01 * 8))); // 2-10
       }
 
       map[x][z] = {
@@ -153,10 +158,16 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
   }
 
   // 森林: 平地タイルの一部に群生させる（水域・丘陵・山岳には生成しない）。
-  // 高さ・起伏とは別の低周波ノイズでクラスタ状に分布させる
+  // 高さ・起伏とは別の低周波ノイズでクラスタ状に分布させる。
+  // ただし中心付近（駅の最大影響半径15タイル、cityDevelopment.tsのradius上限と同じ）は
+  // 森林を除外し、序盤に駅を建ててすぐ自動発展できる連続した平地を保証する
+  // （丘陵・山岳のCENTER_FLAT_RADIUSより狭くし、森林本来の「平地に群生する」分布は維持する）
+  const FOREST_CENTER_RADIUS = 15;
   for (let x = 0; x < GRID_SIZE; x++) {
     for (let z = 0; z < GRID_SIZE; z++) {
       if (map[x][z].terrain !== 'flat') continue;
+      const dist = Math.sqrt((x - cx) ** 2 + (z - cz) ** 2);
+      if (dist < FOREST_CENTER_RADIUS) continue;
       const nx = x / GRID_SIZE;
       const nz = z / GRID_SIZE;
       const forestNoise = (fbm(noise2DForest, nx, nz, 3, 4.0, 2.0, 0.5) + 1) / 2;

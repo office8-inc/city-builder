@@ -153,6 +153,7 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
     }
 
     const newTracks = new Map(tracks);
+    let forestCleared = false;
     for (const seg of newSegments) {
       const id = genId('track');
       const trackSeg: TrackSegment = {
@@ -165,12 +166,17 @@ export function createPlaceTrack(set: SetFn, get: GetFn) {
       // 森林タイルへの線路敷設は伐採として扱う（GAME_DESIGN.md v1.0スコープ item7）
       const t1 = map[seg.sx]?.[seg.sz];
       const t2 = map[seg.ex]?.[seg.ez];
-      if (t1?.terrain === 'forest') t1.terrain = 'flat';
-      if (t2?.terrain === 'forest') t2.terrain = 'flat';
+      if (t1?.terrain === 'forest') { t1.terrain = 'flat'; forestCleared = true; }
+      if (t2?.terrain === 'forest') { t2.terrain = 'flat'; forestCleared = true; }
     }
 
     const newCash = state.constructionMode ? finance.cash : finance.cash - cost;
-    set({ tracks: newTracks, finance: { ...finance, cash: newCash } });
+    // 森林を伐採した場合はmap配列の参照を差し替え、Terrain.tsxのGroundMesh（[map, season]に
+    // 依存するuseMemo）に地面色の再計算を促す。通常の敷設ではmap参照を変えない（毎回ジオメトリを
+    // 再生成するコストを避けるための既存の最適化方針、createSetTileTypeと同じパターン）
+    const updates: Partial<GameState> = { tracks: newTracks, finance: { ...finance, cash: newCash } };
+    if (forestCleared) updates.map = map.map(row => [...row]);
+    set(updates);
     get().addNotification(`線路を${newSegments.length}区間敷設 (${formatMoney(cost)})`, 'success');
   };
 }
