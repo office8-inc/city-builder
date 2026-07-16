@@ -85,7 +85,7 @@ export function FinancePanel() {
 
   const income = finance.quarterlyIncome;
   const expenses = finance.quarterlyExpenses;
-  const totalIncome = income.railFare + income.subsidiary + income.other + income.landRent;
+  const totalIncome = income.railFare + income.subsidiary + income.other + income.landRent + income.materialTransport;
   const totalExpenses = expenses.trackMaintenance + expenses.trainMaintenance +
     expenses.staffCost + expenses.subsidiaryRunning + expenses.interestPayment;
   const net = totalIncome - totalExpenses;
@@ -141,6 +141,12 @@ export function FinancePanel() {
           <div className="flex justify-between">
             <span className="text-white/60">地代収入</span>
             <span className="text-emerald-400">{formatMoney(income.landRent)}</span>
+          </div>
+        )}
+        {income.materialTransport > 0 && (
+          <div className="flex justify-between">
+            <span className="text-white/60">資材輸送収入</span>
+            <span className="text-emerald-400">{formatMoney(income.materialTransport)}</span>
           </div>
         )}
         <div className="flex justify-between border-t border-white/5 pt-0.5">

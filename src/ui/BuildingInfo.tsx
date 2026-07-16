@@ -1,6 +1,7 @@
 import { useGameStore } from '../game/store.ts';
-import { TERRAIN_COLORS, formatMoney } from '../game/constants.ts';
+import { TERRAIN_COLORS, formatMoney, TRAIN_TYPES } from '../game/constants.ts';
 import { findTrainAtTile } from '../game/trackUtils.ts';
+import { getMaterialStockNear } from '../game/materials.ts';
 
 const TERRAIN_LABELS: Record<string, string> = {
   flat: '平地',
@@ -58,6 +59,12 @@ export function BuildingInfo() {
       {tile.landValue > 0 && (
         <div className="text-white/60 mt-1">地価: {tile.landValue}</div>
       )}
+      {(() => {
+        const materialStock = getMaterialStockNear(hoveredTile.x, hoveredTile.z, map);
+        return materialStock > 0 ? (
+          <div className="text-white/60">資材ストック(周辺): {materialStock}</div>
+        ) : null;
+      })()}
 
       {/* Building info */}
       {building && (
@@ -97,7 +104,13 @@ export function BuildingInfo() {
         <div className="border-t border-white/10 mt-1.5 pt-1.5">
           <div className="font-medium" style={{ color: trainAtTile.color }}>{trainAtTile.name}</div>
           <div className="text-white/60">速度: {trainAtTile.maxSpeed}km/h</div>
-          <div className="text-white/60">乗客: {trainAtTile.passengers}/{trainAtTile.capacity}人</div>
+          {TRAIN_TYPES[trainAtTile.type].materialCapacity > 0 ? (
+            <div className="text-white/60">
+              積載: {trainAtTile.materialLoad}/{TRAIN_TYPES[trainAtTile.type].materialCapacity}
+            </div>
+          ) : (
+            <div className="text-white/60">乗客: {trainAtTile.passengers}/{trainAtTile.capacity}人</div>
+          )}
         </div>
       )}
 

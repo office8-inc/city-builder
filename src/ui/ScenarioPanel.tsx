@@ -53,7 +53,7 @@ export function ScenarioPanel() {
           const qi = finance.quarterlyIncome;
           switch (obj.type) {
             case 'population': current = population; break;
-            case 'income': current = qi.railFare + qi.subsidiary + qi.other + qi.landRent; break;
+            case 'income': current = qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport; break;
             case 'stations': current = stations.size; break;
             case 'trains': current = trains.size; break;
             case 'tracks': current = tracks.size; break;

@@ -1,5 +1,6 @@
 import type { GameState, Building, BuildingCategory } from './types.ts';
-import { BUILDING_SUBTYPES, GRID_SIZE, SYNERGY_MATRIX } from './constants.ts';
+import { BUILDING_SUBTYPES, GRID_SIZE, SYNERGY_MATRIX, MATERIAL_THRESHOLD_LEVEL4, MATERIAL_THRESHOLD_LEVEL5 } from './constants.ts';
+import { getMaterialStockNear, withdrawMaterialNear } from './materials.ts';
 
 // Seeded PRNG for consistent building appearance per tile
 function seededRandom(seed: number): number {
@@ -198,7 +199,6 @@ export function developCity(state: GameState): Building[] {
           level: 1, width: spec.width, depth: spec.depth, height: spec.height,
           residents: getBuildingResidents(spec.subtype, 1),
           workers: getBuildingWorkers(spec.subtype, 1),
-          materialRequirement: 0,
         };
 
         newBuildings.push(building);
@@ -218,7 +218,7 @@ export function developCity(state: GameState): Building[] {
 }
 
 export function levelUpBuildings(state: GameState): void {
-  const { stations, buildings } = state;
+  const { stations, buildings, map } = state;
 
   for (const building of buildings.values()) {
     let nearestActivity = 0;
@@ -240,7 +240,18 @@ export function levelUpBuildings(state: GameState): void {
     const rand = seededRandom(building.x * 7001 + building.z * 3011 + state.gameTime.month * 97 + state.gameTime.year * 13);
     if (rand > 0.2) continue;
 
-    building.level++;
+    const nextLevel = building.level + 1;
+
+    // レベル4以上への昇格は近隣（半径MATERIAL_TRANSPORT_RADIUS）の資材ストックが
+    // 閾値以上あることが必須。足りなければ今回は見送り、閾値分だけ消費する（GAME_DESIGN.md 2.3.4節）
+    if (nextLevel >= 4) {
+      const threshold = nextLevel >= 5 ? MATERIAL_THRESHOLD_LEVEL5 : MATERIAL_THRESHOLD_LEVEL4;
+      const available = getMaterialStockNear(building.x, building.z, map);
+      if (available < threshold) continue;
+      withdrawMaterialNear(building.x, building.z, map, threshold);
+    }
+
+    building.level = nextLevel;
     building.height = spec.height * building.level;
     building.residents = getBuildingResidents(building.subtype, building.level);
     building.workers = getBuildingWorkers(building.subtype, building.level);

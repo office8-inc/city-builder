@@ -22,13 +22,13 @@ import type {
   TrainVehicleType,
   TrainSchedule,
 } from './types.ts';
-import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RATIO, formatMoney } from './constants.ts';
+import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RATIO, formatMoney, TRAIN_TYPES } from './constants.ts';
 import { generateTerrain } from './terrain.ts';
 import { advanceTime, calculateDailyFinance } from './simulation.ts';
 import { SCENARIOS, checkObjectives } from './scenarios.ts';
 import { advanceTrainPosition, getStationAtPosition, reverseTrainSchedule } from './trackUtils.ts';
 import { developCity, levelUpBuildings, calculatePopulation, calculateWorkforce } from './cityDevelopment.ts';
-import { processMaterialProduction, updateLandValues, generateRoads } from './materials.ts';
+import { processMaterialProduction, updateLandValues, generateRoads, processFreightCargo } from './materials.ts';
 import { saveToLocalStorage, loadFromLocalStorage } from './saveLoad.ts';
 import { updateSignals } from './signals.ts';
 import {
@@ -60,7 +60,7 @@ function getSeason(month: number): Season {
 const initialFinance: Finance = {
   cash: INITIAL_CASH,
   debt: 0,
-  quarterlyIncome: { railFare: 0, subsidiary: 0, other: 0, landRent: 0 },
+  quarterlyIncome: { railFare: 0, subsidiary: 0, other: 0, landRent: 0, materialTransport: 0 },
   quarterlyExpenses: { trackMaintenance: 0, trainMaintenance: 0, staffCost: 0, subsidiaryRunning: 0, interestPayment: 0 },
   stockPrice: 1000,
   totalAssets: INITIAL_CASH,
@@ -165,6 +165,8 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // Move trains — immutable update (Bug #6 fix)
     let trainsUpdated = false;
+    // 貨物列車が駅で荷降ろしした際の輸送収入（このtick分の合計。ループ終了後にfinanceへ反映する）
+    let materialTransportIncome = 0;
     const newTrains = new Map(state.trains);
     for (const [id, train] of newTrains) {
       // Handle waiting trains
@@ -193,6 +195,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (nextStop && nextStop.stationId === stationAt.id) {
           const isFinalStop = nextIdx === stops.length - 1;
           const loopMode = train.schedule.loopMode;
+          let stoppedAtStation = false;
 
           if (isFinalStop && loopMode === 'one-way') {
             // 片道運行: 終端駅に到達したら運行終了。手動再出発（restartTerminatedTrain）まで停止したまま
@@ -203,12 +206,16 @@ export const useGameStore = create<GameState>((set, get) => ({
               terminated: true,
               schedule: { ...train.schedule, currentStopIndex: nextIdx },
             };
+            stoppedAtStation = true;
           } else if (isFinalStop && loopMode === 'bounce' && stops.length > 1) {
             // 往復運行: 終端駅で停車リストを反転し、そのまま折り返して逆順に辿る
             const reversedSchedule = reverseTrainSchedule({ ...train.schedule, currentStopIndex: nextIdx });
-            updatedTrain = nextStop.action === 'stop'
-              ? { ...updatedTrain, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule }
-              : { ...updatedTrain, schedule: reversedSchedule };
+            if (nextStop.action === 'stop') {
+              updatedTrain = { ...updatedTrain, state: 'waiting', waitTimer: nextStop.waitTime, schedule: reversedSchedule };
+              stoppedAtStation = true;
+            } else {
+              updatedTrain = { ...updatedTrain, schedule: reversedSchedule };
+            }
           } else if (nextStop.action === 'stop') {
             // 循環運行(loop)、および往復/片道の途中駅は従来通り配列を巡回する
             updatedTrain = {
@@ -217,12 +224,30 @@ export const useGameStore = create<GameState>((set, get) => ({
               waitTimer: nextStop.waitTime,
               schedule: { ...train.schedule, currentStopIndex: nextIdx },
             };
+            stoppedAtStation = true;
           } else {
             // Pass through
             updatedTrain = {
               ...updatedTrain,
               schedule: { ...train.schedule, currentStopIndex: nextIdx },
             };
+          }
+
+          // 貨物列車の積み下ろし処理（実際に停車した場合のみ、到着の瞬間に1回だけ実行）
+          if (stoppedAtStation) {
+            const cargo = processFreightCargo(updatedTrain, stationAt, state.map);
+            updatedTrain = cargo.train;
+            if (cargo.incomeDelta > 0) {
+              materialTransportIncome += cargo.incomeDelta;
+              // 頻発通知を避けるため、大口の荷降ろし（積載上限の半分以上）のみ通知する
+              const capacityHalf = TRAIN_TYPES[updatedTrain.type].materialCapacity / 2;
+              if (cargo.unloadedAmount >= capacityHalf) {
+                get().addNotification(
+                  `${updatedTrain.name}が${stationAt.name}駅で資材${cargo.unloadedAmount}を荷降ろし（輸送収入${formatMoney(cargo.incomeDelta)}）`,
+                  'success'
+                );
+              }
+            }
           }
         }
       }
@@ -232,7 +257,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           updatedTrain.direction !== train.direction ||
           updatedTrain.state !== train.state ||
           updatedTrain.waitTimer !== train.waitTimer ||
-          updatedTrain.terminated !== train.terminated) {
+          updatedTrain.terminated !== train.terminated ||
+          updatedTrain.materialLoad !== train.materialLoad) {
         newTrains.set(id, updatedTrain);
         trainsUpdated = true;
       }
@@ -241,6 +267,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     const updates: Partial<GameState> = { gameTime: newTime };
     if (trainsUpdated) updates.trains = newTrains;
     if (updatedSignals !== state.signals) updates.signals = updatedSignals;
+
+    // 貨物列車の資材輸送収入をこのtickのfinanceに反映する。
+    // 以降のdaily/monthly処理は必ず`updates.finance`（未設定ならstate.finance）を土台にして
+    // 積み上げるため、ここで先に加算しておけば後続処理に上書きされて消えることはない
+    if (materialTransportIncome > 0) {
+      updates.finance = {
+        ...state.finance,
+        cash: state.finance.cash + materialTransportIncome,
+        quarterlyIncome: {
+          ...state.finance.quarterlyIncome,
+          materialTransport: state.finance.quarterlyIncome.materialTransport + materialTransportIncome,
+        },
+      };
+    }
 
     // Update season
     const newSeason = getSeason(newTime.month);
@@ -313,7 +353,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       updates.workforce = calculateWorkforce(buildings);
 
       // Daily financial calculations
-      updates.finance = calculateDailyFinance(state, buildings);
+      // 資材輸送収入が既に加算済みなら（updates.finance）それを土台にする。素のstate.financeで
+      // 再計算すると同tick内の輸送収入が上書きされて消えてしまうため
+      updates.finance = calculateDailyFinance(state, buildings, updates.finance ?? state.finance);
 
       // Process loan payments
       if (state.loans.length > 0) {
@@ -366,7 +408,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         const finance = updates.finance ? { ...updates.finance } : { ...state.finance };
         const qi = finance.quarterlyIncome;
         const qe = finance.quarterlyExpenses;
-        const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent;
+        const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport;
         const totalExpenses = qe.trackMaintenance + qe.trainMaintenance + qe.staffCost + qe.subsidiaryRunning + qe.interestPayment;
 
         const record: QuarterlyRecord = {
@@ -389,7 +431,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         finance.stockPrice = Math.max(100, Math.round(eps * peRatio / 1000));
         finance.totalAssets = finance.cash + state.population * 10000;
 
-        finance.quarterlyIncome = { railFare: 0, subsidiary: 0, other: 0, landRent: 0 };
+        finance.quarterlyIncome = { railFare: 0, subsidiary: 0, other: 0, landRent: 0, materialTransport: 0 };
         finance.quarterlyExpenses = { trackMaintenance: 0, trainMaintenance: 0, staffCost: 0, subsidiaryRunning: 0, interestPayment: 0 };
         updates.finance = finance;
       }

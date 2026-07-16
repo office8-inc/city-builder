@@ -69,14 +69,16 @@ export const STATION_COSTS: Record<StationType, number> = {
 export const TRAIN_TYPES: Record<TrainVehicleType, {
   name: string; maxSpeed: number; capacity: number; cars: number;
   cost: number; maintenance: number; color: string; farePremium: number;
+  // 貨物列車の資材積載上限（他車種は0固定。資材輸送は貨物列車のみ担当）
+  materialCapacity: number;
 }> = {
-  local: { name: '普通列車', maxSpeed: 80, capacity: 600, cars: 4, cost: 200_000_000, maintenance: 2_000_000, color: '#4ade80', farePremium: 1.0 },
-  suburban: { name: '近郊型電車', maxSpeed: 100, capacity: 800, cars: 6, cost: 350_000_000, maintenance: 3_500_000, color: '#60a0e0', farePremium: 1.2 },
-  express: { name: '急行列車', maxSpeed: 120, capacity: 400, cars: 6, cost: 500_000_000, maintenance: 5_000_000, color: '#f97316', farePremium: 1.5 },
-  diesel: { name: '気動車', maxSpeed: 90, capacity: 400, cars: 3, cost: 180_000_000, maintenance: 2_500_000, color: '#c0a020', farePremium: 1.0 },
-  freight: { name: '貨物列車', maxSpeed: 60, capacity: 0, cars: 8, cost: 150_000_000, maintenance: 3_000_000, color: '#94a3b8', farePremium: 0 },
-  shinkansen: { name: '新幹線', maxSpeed: 300, capacity: 1200, cars: 16, cost: 5_000_000_000, maintenance: 20_000_000, color: '#ffffff', farePremium: 3.0 },
-  steam: { name: '蒸気機関車', maxSpeed: 60, capacity: 200, cars: 5, cost: 300_000_000, maintenance: 4_000_000, color: '#2a2a2a', farePremium: 2.5 },
+  local: { name: '普通列車', maxSpeed: 80, capacity: 600, cars: 4, cost: 200_000_000, maintenance: 2_000_000, color: '#4ade80', farePremium: 1.0, materialCapacity: 0 },
+  suburban: { name: '近郊型電車', maxSpeed: 100, capacity: 800, cars: 6, cost: 350_000_000, maintenance: 3_500_000, color: '#60a0e0', farePremium: 1.2, materialCapacity: 0 },
+  express: { name: '急行列車', maxSpeed: 120, capacity: 400, cars: 6, cost: 500_000_000, maintenance: 5_000_000, color: '#f97316', farePremium: 1.5, materialCapacity: 0 },
+  diesel: { name: '気動車', maxSpeed: 90, capacity: 400, cars: 3, cost: 180_000_000, maintenance: 2_500_000, color: '#c0a020', farePremium: 1.0, materialCapacity: 0 },
+  freight: { name: '貨物列車', maxSpeed: 60, capacity: 0, cars: 8, cost: 150_000_000, maintenance: 3_000_000, color: '#94a3b8', farePremium: 0, materialCapacity: 20 },
+  shinkansen: { name: '新幹線', maxSpeed: 300, capacity: 1200, cars: 16, cost: 5_000_000_000, maintenance: 20_000_000, color: '#ffffff', farePremium: 3.0, materialCapacity: 0 },
+  steam: { name: '蒸気機関車', maxSpeed: 60, capacity: 200, cars: 5, cost: 300_000_000, maintenance: 4_000_000, color: '#2a2a2a', farePremium: 2.5, materialCapacity: 0 },
 };
 
 // === Subsidiary Costs ===
@@ -172,7 +174,11 @@ export const SYNERGY_MATRIX: Record<string, Partial<Record<string, number>>> = {
 export const MATERIAL_PRODUCTION_PER_DAY = 10;
 export const MATERIAL_THRESHOLD_LEVEL4 = 50;
 export const MATERIAL_THRESHOLD_LEVEL5 = 100;
-export const MATERIAL_TRANSPORT_RADIUS = 10;
+// 資材の集積・消費半径（駅での貨物積み下ろし、建物レベルアップ判定の両方で共通利用）。
+// 「駅・建物のごく近く」に運び込まれた資材だけが有効という設計（GAME_DESIGN.md 2.3.4節）
+export const MATERIAL_TRANSPORT_RADIUS = 3;
+// 資材輸送収入: 貨物列車が荷降ろしした資材1単位あたりの収入
+export const MATERIAL_TRANSPORT_INCOME_PER_UNIT = 500_000;
 
 // === Loan Constants ===
 export const LOAN_INTEREST_RATE = 0.04;

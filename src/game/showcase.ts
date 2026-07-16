@@ -35,7 +35,7 @@ function makeBuilding(
 ): Building {
   return {
     id: id('bld'), x, z, type, subtype, level,
-    width, depth, height, residents, workers, materialRequirement: 0,
+    width, depth, height, residents, workers,
   };
 }
 

@@ -99,7 +99,6 @@ export interface Building {
   height: number;
   residents: number;
   workers: number;
-  materialRequirement: number;
 }
 
 // === Subsidiary ===
@@ -171,6 +170,8 @@ export interface IncomeBreakdown {
   subsidiary: number;
   other: number;
   landRent: number;
+  // v1.0新規: 貨物列車の資材輸送収入（荷降ろし時に計上）
+  materialTransport: number;
 }
 
 export interface ExpenseBreakdown {

@@ -44,9 +44,17 @@ export function formatClock(time: GameTime): string {
   return `${h}:${min}`;
 }
 
-/** Calculate daily income and expense, update finance in-place. Returns updated finance. */
-export function calculateDailyFinance(state: GameState, buildings: Map<string, import('./types.ts').Building>): Finance {
-  const finance = { ...state.finance };
+/**
+ * Calculate daily income and expense, update finance in-place. Returns updated finance.
+ * baseFinance: このtickで既に確定している収支（例: 貨物列車の資材輸送収入）を土台にする。
+ * 省略時はstate.financeをそのまま使う。
+ */
+export function calculateDailyFinance(
+  state: GameState,
+  buildings: Map<string, import('./types.ts').Building>,
+  baseFinance: Finance = state.finance,
+): Finance {
+  const finance = { ...baseFinance };
 
   // Rush hour multiplier
   const rushMultiplier = getPassengerMultiplier(state.gameTime.hour);
@@ -114,6 +122,8 @@ export function calculateDailyFinance(state: GameState, buildings: Map<string, i
     subsidiary: finance.quarterlyIncome.subsidiary + Math.round(dailySubRevenue),
     other: finance.quarterlyIncome.other + Math.round(dailyTax),
     landRent: finance.quarterlyIncome.landRent + Math.round(dailyLandRent),
+    // 資材輸送収入は貨物列車の荷降ろし時に別途tick()内で加算されるため、ここでは素通しする
+    materialTransport: finance.quarterlyIncome.materialTransport,
   };
   finance.quarterlyExpenses = {
     trackMaintenance: finance.quarterlyExpenses.trackMaintenance + Math.round(dailyTrackMaint),

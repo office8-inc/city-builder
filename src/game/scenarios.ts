@@ -52,14 +52,14 @@ export function checkObjectives(
   scenario: Scenario,
   state: {
     population: number;
-    finance: { cash: number; quarterlyIncome: { railFare: number; subsidiary: number; other: number; landRent: number } };
+    finance: { cash: number; quarterlyIncome: { railFare: number; subsidiary: number; other: number; landRent: number; materialTransport: number } };
     stations: Map<unknown, unknown>;
     trains: Map<unknown, unknown>;
     tracks: Map<unknown, unknown>;
   }
 ): { objectives: Scenario['objectives']; allComplete: boolean } {
   const qi = state.finance.quarterlyIncome;
-  const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent;
+  const totalIncome = qi.railFare + qi.subsidiary + qi.other + qi.landRent + qi.materialTransport;
 
   const objectives = scenario.objectives.map(obj => {
     let current = 0;

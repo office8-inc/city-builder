@@ -1,5 +1,8 @@
-import type { GameState } from './types.ts';
-import { MATERIAL_PRODUCTION_PER_DAY, MATERIAL_TRANSPORT_RADIUS } from './constants.ts';
+import type { GameState, MapTile, Train, Station } from './types.ts';
+import {
+  MATERIAL_PRODUCTION_PER_DAY, MATERIAL_TRANSPORT_RADIUS, MATERIAL_TRANSPORT_INCOME_PER_UNIT,
+  TRAIN_TYPES,
+} from './constants.ts';
 
 /**
  * Process material production from factories and material yards.
@@ -20,12 +23,11 @@ export function processMaterialProduction(state: GameState): void {
 }
 
 /**
- * Get total material stock within radius of a position.
+ * 指定座標を中心とした半径内のタイル一覧を返す（materialStock参照・更新系関数の共通ヘルパー）。
  */
-export function getMaterialStockNear(
-  x: number, z: number, map: GameState['map'], radius: number = MATERIAL_TRANSPORT_RADIUS
-): number {
-  let total = 0;
+function getTilesNear(x: number, z: number, map: GameState['map'], radius: number): MapTile[] {
+  const tiles: MapTile[] = [];
+  if (map.length === 0) return tiles;
   const minX = Math.max(0, x - radius);
   const maxX = Math.min(map.length - 1, x + radius);
   const minZ = Math.max(0, z - radius);
@@ -35,11 +37,102 @@ export function getMaterialStockNear(
     for (let iz = minZ; iz <= maxZ; iz++) {
       const dist = Math.sqrt((ix - x) ** 2 + (iz - z) ** 2);
       if (dist <= radius) {
-        total += map[ix][iz].materialStock;
+        tiles.push(map[ix][iz]);
       }
     }
   }
+  return tiles;
+}
+
+/**
+ * Get total material stock within radius of a position.
+ */
+export function getMaterialStockNear(
+  x: number, z: number, map: GameState['map'], radius: number = MATERIAL_TRANSPORT_RADIUS
+): number {
+  let total = 0;
+  for (const tile of getTilesNear(x, z, map, radius)) {
+    total += tile.materialStock;
+  }
   return total;
+}
+
+/**
+ * 指定座標周辺のmaterialStockから、要求量を上限に引き出す（在庫が足りない分は引き出せない）。
+ * 貨物列車の積載（駅周辺から積む）と、建物レベルアップの資材消費の両方で使う共通処理。
+ * 実際に引き出せた量を返す。
+ */
+export function withdrawMaterialNear(
+  x: number, z: number, map: GameState['map'], amount: number, radius: number = MATERIAL_TRANSPORT_RADIUS
+): number {
+  let remaining = amount;
+  for (const tile of getTilesNear(x, z, map, radius)) {
+    if (remaining <= 0) break;
+    const take = Math.min(tile.materialStock, remaining);
+    if (take > 0) {
+      tile.materialStock -= take;
+      remaining -= take;
+    }
+  }
+  return amount - remaining;
+}
+
+/**
+ * 駅位置とその隣接4タイル（計5タイル）に資材を均等に配分して加算する。
+ * 貨物列車の荷降ろし時に使う。タイル単位の蓄積上限(300)を超えない。
+ */
+function depositMaterialNear(stationX: number, stationZ: number, map: GameState['map'], amount: number): void {
+  if (amount <= 0) return;
+  const size = map.length;
+  const depth = map[0]?.length ?? size;
+  const offsets: [number, number][] = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+  const targets: MapTile[] = [];
+  for (const [dx, dz] of offsets) {
+    const nx = stationX + dx;
+    const nz = stationZ + dz;
+    if (nx >= 0 && nx < size && nz >= 0 && nz < depth) {
+      targets.push(map[nx][nz]);
+    }
+  }
+  if (targets.length === 0) return;
+
+  const share = Math.floor(amount / targets.length);
+  let remainder = amount - share * targets.length;
+  for (const tile of targets) {
+    let add = share;
+    if (remainder > 0) { add += 1; remainder--; }
+    tile.materialStock = Math.min(300, tile.materialStock + add);
+  }
+}
+
+export interface FreightCargoResult {
+  train: Train;
+  incomeDelta: number;
+  unloadedAmount: number;
+  loadedAmount: number;
+}
+
+/**
+ * 貨物列車が駅に停車した際の積み下ろし処理（GAME_DESIGN.md 2.3.4節）。
+ * - 積載0の状態で停車 → 駅周辺のmaterialStockから積載上限まで積み込む
+ * - 積載ありの状態で停車 → 全量を駅周辺タイルに荷降ろしし、輸送収入を計上する
+ * 貨物列車以外（materialCapacity===0）は何もしない。
+ */
+export function processFreightCargo(train: Train, station: Station, map: GameState['map']): FreightCargoResult {
+  const capacity = TRAIN_TYPES[train.type].materialCapacity;
+  if (capacity <= 0) {
+    return { train, incomeDelta: 0, unloadedAmount: 0, loadedAmount: 0 };
+  }
+
+  if (train.materialLoad > 0) {
+    const unloaded = train.materialLoad;
+    depositMaterialNear(station.x, station.z, map, unloaded);
+    const incomeDelta = unloaded * MATERIAL_TRANSPORT_INCOME_PER_UNIT;
+    return { train: { ...train, materialLoad: 0 }, incomeDelta, unloadedAmount: unloaded, loadedAmount: 0 };
+  }
+
+  const loaded = withdrawMaterialNear(station.x, station.z, map, capacity);
+  return { train: { ...train, materialLoad: loaded }, incomeDelta: 0, unloadedAmount: 0, loadedAmount: loaded };
 }
 
 /**

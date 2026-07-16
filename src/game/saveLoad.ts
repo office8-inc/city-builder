@@ -107,6 +107,18 @@ function normalizeTrain(t: Train): Train {
   return { ...t, terminated: (t as unknown as Partial<Train>).terminated ?? false };
 }
 
+// v1.0（資材輸送収入 materialTransport 追加）より前のセーブには存在しないため、
+// ロード時にデフォルト値(0)で補完する
+function normalizeFinance(f: Finance): Finance {
+  return {
+    ...f,
+    quarterlyIncome: {
+      ...f.quarterlyIncome,
+      materialTransport: (f.quarterlyIncome as unknown as Partial<IncomeBreakdown>).materialTransport ?? 0,
+    },
+  };
+}
+
 function getSaveKey(slot?: number): string {
   if (slot !== undefined && slot > 0) return `atrain-city-save-${slot}`;
   return 'atrain-city-save';
@@ -174,7 +186,7 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
   setNextEntityId(maxEntityId + 1);
   setNextBuildingId(maxBuildingId + 1);
 
-  const finance: Finance = {
+  const finance: Finance = normalizeFinance({
     ...data.finance,
     stockPrice: (data.finance as unknown as Partial<Finance>).stockPrice ?? 1000,
     totalAssets: (data.finance as unknown as Partial<Finance>).totalAssets ?? data.finance.cash,
@@ -182,12 +194,9 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
       ...data.finance.quarterlyIncome,
       landRent: (data.finance.quarterlyIncome as unknown as Partial<IncomeBreakdown>).landRent ?? 0,
     },
-  };
+  });
 
-  const buildings = new Map<string, Building>();
-  for (const [id, b] of data.buildings) {
-    buildings.set(id, { ...b, materialRequirement: (b as unknown as Partial<Building>).materialRequirement ?? 0 });
-  }
+  const buildings = new Map<string, Building>(data.buildings);
 
   const trains = new Map<string, Train>();
   for (const [id, t] of data.trains) {
@@ -251,7 +260,7 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
     signals: new Map(data.signals),
-    finance: data.finance,
+    finance: normalizeFinance(data.finance),
     population: data.population,
     workforce: data.workforce,
     quarterlyHistory: data.quarterlyHistory || [],
@@ -286,7 +295,7 @@ function loadV3(data: SerializedStateV3): Partial<GameState> {
     buildings: new Map(data.buildings),
     subsidiaries: new Map(data.subsidiaries),
     signals: new Map(data.signals),
-    finance: data.finance,
+    finance: normalizeFinance(data.finance),
     population: data.population,
     workforce: data.workforce,
     quarterlyHistory: data.quarterlyHistory || [],

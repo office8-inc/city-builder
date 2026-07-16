@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useGameStore } from '../game/store.ts';
 import type { ScheduleStop, Train } from '../game/types.ts';
+import { TRAIN_TYPES } from '../game/constants.ts';
 
 function TrainScheduleEditor({ train }: { train: Train }) {
   const stations = useGameStore(s => s.stations);
@@ -46,6 +47,11 @@ function TrainScheduleEditor({ train }: { train: Train }) {
         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: train.color }} />
         <span className="font-medium text-sm">{train.name}</span>
         <span className="text-white/40 text-[10px]">{train.type}</span>
+        {TRAIN_TYPES[train.type].materialCapacity > 0 && (
+          <span className="px-1.5 py-0.5 rounded text-[9px] bg-slate-500/40 text-slate-200">
+            積載 {train.materialLoad}/{TRAIN_TYPES[train.type].materialCapacity}
+          </span>
+        )}
         {train.terminated && (
           <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-500/40 text-red-200">終着</span>
         )}

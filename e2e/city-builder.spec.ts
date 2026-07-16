@@ -587,3 +587,124 @@ test.describe('Bankruptcy & Emergency Bailout', () => {
     await expect(page.getByText('経営破綻')).not.toBeVisible();
   });
 });
+
+test.describe('Material Transport Pipeline', () => {
+  test('building level-up to level 4 requires and consumes nearby material stock', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+
+    const result = await gameEval(page, `(() => {
+      const store = window.__gameStore;
+
+      // cityDevelopment.ts のseededRandomと同一実装（建物レベルアップ判定の乱数と一致させるため）
+      function seededRandom(seed) {
+        let s = seed | 0;
+        s = (s + 0x6d2b79f5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+
+      const bx = 62, bz = 60;
+      const seedBase = bx * 7001 + bz * 3011;
+
+      // levelUpBuildings(state)はtick()内でadvanceTime前のstate（＝tick開始時点のgameTime）を
+      // そのまま参照するため、「月末23:50→tick1回」で読ませる乱数のseedはその開始時点の年月になる。
+      // ここではその年月自体を「20%判定に当選する」ものになるまで探索する
+      let priorYear = 2024, priorMonth = 4;
+      for (let i = 0; i < 240; i++) {
+        const rand = seededRandom(seedBase + priorMonth * 97 + priorYear * 13);
+        if (rand <= 0.2) break;
+        priorMonth++;
+        if (priorMonth > 12) { priorMonth = 1; priorYear++; }
+      }
+
+      function runScenario(materialStock) {
+        const s = store.getState();
+        s.placeTrack(60, 60, 61, 60);
+        s.buildStation(60, 60);
+        const station = Array.from(store.getState().stations.values()).slice(-1)[0];
+        store.setState({
+          stations: new Map(store.getState().stations).set(station.id, { ...station, activityLevel: 80 }),
+        });
+
+        // レベル3の集合住宅(apartment_medium, maxLevel=4)を直接注入する
+        const building = {
+          id: 'test_bld_1', x: bx, z: bz, type: 'residential', subtype: 'apartment_medium',
+          level: 3, width: 2, depth: 2, height: 5, residents: 240, workers: 0,
+        };
+        store.setState({ buildings: new Map([[building.id, building]]) });
+
+        const map = store.getState().map;
+        map[bx][bz].materialStock = materialStock;
+
+        store.setState({
+          gameTime: { year: priorYear, month: priorMonth, day: 30, hour: 23, minute: 50 },
+          lastLevelUpMonth: 0,
+          lastDevelopmentDay: 0,
+        });
+        store.getState().tick();
+
+        const b = store.getState().buildings.get('test_bld_1');
+        const stockAfter = store.getState().map[bx][bz].materialStock;
+        return { level: b.level, stockAfter };
+      }
+
+      const sufficient = runScenario(100);
+      const insufficient = runScenario(0);
+
+      return { sufficient, insufficient, priorYear, priorMonth };
+    })()`);
+
+    // 資材が閾値(50)以上あればレベル4へ昇格し、閾値分だけ消費される（余剰は残る）
+    expect(result.sufficient.level).toBe(4);
+    expect(result.sufficient.stockAfter).toBe(100 - 50);
+
+    // 全く同じ乱数当選タイミングでも、資材が無ければレベル4へは昇格しない
+    expect(result.insufficient.level).toBe(3);
+    expect(result.insufficient.stockAfter).toBe(0);
+  });
+
+  test('freight train picks up material at one station and delivers it with income at another', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      s.placeTrack(70, 70, 71, 70);
+      s.buildStation(70, 70);
+      s.buildStation(71, 70);
+      const stations = Array.from(window.__gameStore.getState().stations.values());
+      const stationA = stations.find(st => st.x === 70 && st.z === 70);
+      const stationB = stations.find(st => st.x === 71 && st.z === 70);
+
+      const map = window.__gameStore.getState().map;
+      map[70][70].materialStock = 30;
+
+      s.setSelectedTrainType('freight');
+      s.placeTrain(stationA.id);
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      s.updateTrainSchedule(train.id, {
+        stops: [
+          { stationId: stationA.id, action: 'stop', waitTime: 10 },
+          { stationId: stationB.id, action: 'stop', waitTime: 10 },
+        ],
+        currentStopIndex: 0,
+        loopMode: 'bounce',
+      });
+
+      for (let i = 0; i < 2000; i++) s.tick();
+
+      const s2 = window.__gameStore.getState();
+      return {
+        originStock: s2.map[70][70].materialStock,
+        destStock: s2.map[71][70].materialStock,
+        materialTransportIncome: s2.finance.quarterlyIncome.materialTransport,
+      };
+    })()`);
+
+    expect(result.originStock).toBeLessThan(30);
+    expect(result.destStock).toBeGreaterThan(0);
+    expect(result.materialTransportIncome).toBeGreaterThan(0);
+  });
+});

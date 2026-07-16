@@ -51,7 +51,11 @@ export function HelpPanel() {
           ))}
         </div>
 
-        <p className="text-white/30 text-xs mt-4 text-center">
+        <p className="text-white/50 text-xs mt-4 text-center leading-relaxed">
+          💡 工場で生産した資材は、貨物列車で駅へ運んで荷降ろしすると、駅周辺の建物がレベル4以上に発展できるようになります
+        </p>
+
+        <p className="text-white/30 text-xs mt-2 text-center">
           H または ? キーでこのパネルを表示
         </p>
       </div>
