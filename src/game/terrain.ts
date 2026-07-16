@@ -170,7 +170,17 @@ export function generateTerrain(seed: number = 42): MapTile[][] {
         // Remove isolated water tiles
         if (waterNeighbors === 0) {
           map[x][z].terrain = 'flat';
-          map[x][z].height = 2;
+          // 昇格後の高さは固定値ではなく周囲タイルの高さの平均にする。
+          // isolated判定＝隣接4タイルはすべて非水域なので、その平均を使えば
+          // 高さが常に有効（例えば隣が丘陵ならその高さに近い値になり、丘陵の隣に
+          // 高さ2の平地が孤立して段差になる、というContinuity崩れを防げる）
+          let sum = 0;
+          let count = 0;
+          for (const [dx, dz] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
+            const neighbor = map[x + dx]?.[z + dz];
+            if (neighbor) { sum += neighbor.height; count++; }
+          }
+          map[x][z].height = count > 0 ? Math.round(sum / count) : 2;
         }
       }
     }
