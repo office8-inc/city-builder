@@ -26,7 +26,14 @@ function SimulationLoop() {
   const tickAccumulator = useRef(0);
 
   useFrame((_, delta) => {
-    if (speed === 0 || gamePhase === 'title') return;
+    // タイトル・破産・シナリオクリア/失敗のモーダル表示中はシミュレーションを止める
+    if (
+      speed === 0 ||
+      gamePhase === 'title' ||
+      gamePhase === 'gameover' ||
+      gamePhase === 'scenario_clear' ||
+      gamePhase === 'scenario_failed'
+    ) return;
     const ticksPerSecond = speed * 4;
     tickAccumulator.current += delta * ticksPerSecond;
     while (tickAccumulator.current >= 1) {

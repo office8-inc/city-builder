@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useGameStore } from '../game/store.ts';
 import { hasSavedGame } from '../game/saveLoad.ts';
 import { SCENARIOS } from '../game/scenarios.ts';
-import { formatMoney } from '../game/constants.ts';
+import { formatMoney, INITIAL_YEAR } from '../game/constants.ts';
 
 
 type Screen = 'main' | 'scenario' | 'load';
@@ -45,6 +45,7 @@ export function TitleScreen() {
     setScenarioId(id);
     useGameStore.setState({
       finance: { ...useGameStore.getState().finance, cash: scenario.initialCash },
+      scenarioStartYear: INITIAL_YEAR,
     });
     setGamePhase('playing');
   };

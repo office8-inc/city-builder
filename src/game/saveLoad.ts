@@ -67,7 +67,39 @@ interface SerializedStateV2 {
   nextBuildingId: number;
 }
 
-type SerializedState = SerializedStateV1 | SerializedStateV2;
+interface SerializedStateV3 {
+  version: 3;
+  map: MapTile[][];
+  tracks: [string, TrackSegment][];
+  stations: [string, Station][];
+  trains: [string, Train][];
+  buildings: [string, Building][];
+  subsidiaries: [string, Subsidiary][];
+  signals: [string, Signal][];
+  finance: Finance;
+  population: number;
+  workforce: number;
+  quarterlyHistory: QuarterlyRecord[];
+  loans: Loan[];
+  ownedLand: string[];
+  gameTime: GameTime;
+  speed: GameSpeed;
+  season: Season;
+  weatherType: WeatherType;
+  selectedTrainType: TrainVehicleType;
+  constructionMode: boolean;
+  scenarioId: string | null;
+  scenarioStartYear: number | null;
+  scenarioCleared: boolean;
+  bailoutUsed: boolean;
+  lastDevelopmentDay: number;
+  lastLevelUpMonth: number;
+  lastAutoSaveDay: number;
+  nextEntityId: number;
+  nextBuildingId: number;
+}
+
+type SerializedState = SerializedStateV1 | SerializedStateV2 | SerializedStateV3;
 
 function getSaveKey(slot?: number): string {
   if (slot !== undefined && slot > 0) return `atrain-city-save-${slot}`;
@@ -75,8 +107,8 @@ function getSaveKey(slot?: number): string {
 }
 
 export function serializeState(state: GameState): string {
-  const data: SerializedStateV2 = {
-    version: 2,
+  const data: SerializedStateV3 = {
+    version: 3,
     map: state.map,
     tracks: Array.from(state.tracks.entries()),
     stations: Array.from(state.stations.entries()),
@@ -97,6 +129,9 @@ export function serializeState(state: GameState): string {
     selectedTrainType: state.selectedTrainType,
     constructionMode: state.constructionMode,
     scenarioId: state.scenarioId,
+    scenarioStartYear: state.scenarioStartYear,
+    scenarioCleared: state.scenarioCleared,
+    bailoutUsed: state.bailoutUsed,
     lastDevelopmentDay: state.lastDevelopmentDay,
     lastLevelUpMonth: state.lastLevelUpMonth,
     lastAutoSaveDay: state.lastAutoSaveDay,
@@ -192,6 +227,9 @@ function migrateV1toV2(data: SerializedStateV1): Partial<GameState> {
     lastDevelopmentDay: data.lastDevelopmentDay,
     lastLevelUpMonth: data.lastLevelUpMonth,
     lastAutoSaveDay: data.lastAutoSaveDay || 0,
+    scenarioStartYear: null,
+    scenarioCleared: false,
+    bailoutUsed: false,
   };
 }
 
@@ -220,6 +258,44 @@ function loadV2(data: SerializedStateV2): Partial<GameState> {
     selectedTrainType: data.selectedTrainType,
     constructionMode: data.constructionMode,
     scenarioId: data.scenarioId,
+    // v2セーブにはシナリオ進行・救済融資フラグが存在しないためデフォルト値で補完
+    scenarioStartYear: null,
+    scenarioCleared: false,
+    bailoutUsed: false,
+    lastDevelopmentDay: data.lastDevelopmentDay,
+    lastLevelUpMonth: data.lastLevelUpMonth,
+    lastAutoSaveDay: data.lastAutoSaveDay || 0,
+  };
+}
+
+function loadV3(data: SerializedStateV3): Partial<GameState> {
+  setNextEntityId(data.nextEntityId);
+  setNextBuildingId(data.nextBuildingId);
+
+  return {
+    map: data.map,
+    tracks: new Map(data.tracks),
+    stations: new Map(data.stations),
+    trains: new Map(data.trains),
+    buildings: new Map(data.buildings),
+    subsidiaries: new Map(data.subsidiaries),
+    signals: new Map(data.signals),
+    finance: data.finance,
+    population: data.population,
+    workforce: data.workforce,
+    quarterlyHistory: data.quarterlyHistory || [],
+    loans: data.loans || [],
+    ownedLand: new Set(data.ownedLand || []),
+    gameTime: data.gameTime,
+    speed: data.speed,
+    season: data.season,
+    weatherType: data.weatherType,
+    selectedTrainType: data.selectedTrainType,
+    constructionMode: data.constructionMode,
+    scenarioId: data.scenarioId,
+    scenarioStartYear: data.scenarioStartYear ?? null,
+    scenarioCleared: data.scenarioCleared ?? false,
+    bailoutUsed: data.bailoutUsed ?? false,
     lastDevelopmentDay: data.lastDevelopmentDay,
     lastLevelUpMonth: data.lastLevelUpMonth,
     lastAutoSaveDay: data.lastAutoSaveDay || 0,
@@ -247,6 +323,9 @@ export function loadFromLocalStorage(slot?: number): Partial<GameState> | null {
     }
     if (data.version === 2) {
       return loadV2(data);
+    }
+    if (data.version === 3) {
+      return loadV3(data);
     }
 
     return null;

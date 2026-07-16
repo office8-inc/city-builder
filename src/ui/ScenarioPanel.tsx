@@ -5,6 +5,7 @@ import { formatMoney } from '../game/constants.ts';
 
 export function ScenarioPanel() {
   const scenarioId = useGameStore(s => s.scenarioId);
+  const scenarioStartYear = useGameStore(s => s.scenarioStartYear);
   const population = useGameStore(s => s.population);
   const finance = useGameStore(s => s.finance);
   const stations = useGameStore(s => s.stations);
@@ -21,8 +22,8 @@ export function ScenarioPanel() {
 
   if (!scenario || !result) return null;
 
-  const yearsLeft = scenario.timeLimit
-    ? Math.max(0, scenario.timeLimit - (gameTime.year - 2000))
+  const yearsLeft = scenario.timeLimit && scenarioStartYear !== null
+    ? Math.max(0, scenario.timeLimit - (gameTime.year - scenarioStartYear))
     : null;
 
   const difficultyColor = scenario.difficulty === 'easy' ? 'text-emerald-400'

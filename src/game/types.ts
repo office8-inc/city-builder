@@ -227,7 +227,7 @@ export interface Scenario {
 }
 
 // === Game Phase ===
-export type GamePhase = 'title' | 'playing' | 'tutorial' | 'gameover' | 'map_editor';
+export type GamePhase = 'title' | 'playing' | 'tutorial' | 'gameover' | 'map_editor' | 'scenario_clear' | 'scenario_failed';
 
 // === Camera Mode ===
 export type CameraMode = 'free' | 'follow' | 'quarter';
@@ -309,6 +309,12 @@ export interface GameState {
   showHelpPanel: boolean;
   constructionMode: boolean;
   scenarioId: string | null;
+  // シナリオ開始時の年（残り年数・制限時間判定に使用）
+  scenarioStartYear: number | null;
+  // シナリオ目標を一度でも達成済みか（続行プレイ中の再発火防止）
+  scenarioCleared: boolean;
+  // 経営破綻からの緊急支援融資を使用済みか（1ゲームにつき1回限り）
+  bailoutUsed: boolean;
 
   selectedTool: ToolType;
   selectedSubsidiaryType: SubsidiaryType | null;
@@ -355,6 +361,7 @@ export interface GameState {
   loadGame: (slot?: number) => void;
   takeLoan: (amount: number, months: number) => void;
   repayLoan: (loanId: string) => void;
+  takeBailout: () => void;
   buyLand: (x: number, z: number) => void;
   sellLand: (x: number, z: number) => void;
   placeSignal: (x: number, z: number) => void;

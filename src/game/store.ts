@@ -25,6 +25,7 @@ import type {
 import { GRID_SIZE, INITIAL_CASH, INITIAL_YEAR, LOAN_INTEREST_RATE, MAX_DEBT_RATIO, formatMoney } from './constants.ts';
 import { generateTerrain } from './terrain.ts';
 import { advanceTime, calculateDailyFinance } from './simulation.ts';
+import { SCENARIOS, checkObjectives } from './scenarios.ts';
 import { advanceTrainPosition, getStationAtPosition } from './trackUtils.ts';
 import { developCity, levelUpBuildings, calculatePopulation, calculateWorkforce } from './cityDevelopment.ts';
 import { processMaterialProduction, updateLandValues, generateRoads } from './materials.ts';
@@ -42,6 +43,12 @@ let nextNotificationId = 1;
 
 // Train movement speed: position units per tick (each tick = 10 game minutes)
 const TRAIN_MOVE_SPEED = 0.03;
+
+// 元利均等返済の月額返済額を計算
+function calculateMonthlyPayment(principal: number, annualRate: number, months: number): number {
+  const monthlyRate = annualRate / 12;
+  return Math.round(principal * monthlyRate * Math.pow(1 + monthlyRate, months) / (Math.pow(1 + monthlyRate, months) - 1));
+}
 
 function getSeason(month: number): Season {
   if (month >= 3 && month <= 5) return 'spring';
@@ -107,6 +114,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   showHelpPanel: false,
   constructionMode: false,
   scenarioId: null,
+  scenarioStartYear: null,
+  scenarioCleared: false,
+  bailoutUsed: false,
 
   // UI
   selectedTool: 'none',
@@ -374,6 +384,35 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       }
 
+      // シナリオのクリア・制限時間切れ判定（scenarioId設定時のみ、クリア済みなら再判定しない）
+      if (state.scenarioId && !state.scenarioCleared) {
+        const scenario = SCENARIOS.find(sc => sc.id === state.scenarioId);
+        if (scenario) {
+          const scenarioFinance = updates.finance || state.finance;
+          const scenarioPopulation = updates.population ?? state.population;
+          const { allComplete } = checkObjectives(scenario, {
+            population: scenarioPopulation,
+            finance: scenarioFinance,
+            stations: state.stations,
+            trains: state.trains,
+            tracks: state.tracks,
+          });
+          if (allComplete) {
+            set({ ...updates, gamePhase: 'scenario_clear', scenarioCleared: true } as GameState);
+            get().addNotification(`シナリオ「${scenario.name}」の目標を達成しました！`, 'success');
+            return;
+          } else if (
+            scenario.timeLimit !== undefined &&
+            state.scenarioStartYear !== null &&
+            newTime.year - state.scenarioStartYear >= scenario.timeLimit
+          ) {
+            set({ ...updates, gamePhase: 'scenario_failed' } as GameState);
+            get().addNotification(`シナリオ「${scenario.name}」は制限時間内に目標を達成できませんでした`, 'error');
+            return;
+          }
+        }
+      }
+
       if (!updates.buildings) updates.buildings = new Map(state.buildings);
     }
 
@@ -439,8 +478,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   takeLoan: (amount: number, months: number) => {
     const state = get();
     const rate = LOAN_INTEREST_RATE;
-    const monthlyRate = rate / 12;
-    const monthlyPayment = Math.round(amount * monthlyRate * Math.pow(1 + monthlyRate, months) / (Math.pow(1 + monthlyRate, months) - 1));
+    const monthlyPayment = calculateMonthlyPayment(amount, rate, months);
 
     const loan: Loan = {
       id: `loan_${Date.now()}`,
@@ -477,6 +515,39 @@ export const useGameStore = create<GameState>((set, get) => ({
       finance: { ...state.finance, cash: state.finance.cash - remaining, debt: newDebt },
     });
     get().addNotification(`${formatMoney(remaining)}を返済しました`, 'success');
+  },
+
+  // 経営破綻からの緊急支援（1ゲームにつき1回限り）。
+  // 資金+2億円の代わりに元本2.4億円・年利8%・10年返済の救済融資を追加する。
+  takeBailout: () => {
+    const state = get();
+    if (state.bailoutUsed) return;
+
+    const BAILOUT_CASH = 200_000_000;
+    const BAILOUT_PRINCIPAL = 240_000_000;
+    const BAILOUT_RATE = 0.08;
+    const BAILOUT_MONTHS = 120;
+
+    const monthlyPayment = calculateMonthlyPayment(BAILOUT_PRINCIPAL, BAILOUT_RATE, BAILOUT_MONTHS);
+    const loan: Loan = {
+      id: `loan_bailout_${Date.now()}`,
+      principal: BAILOUT_PRINCIPAL,
+      interestRate: BAILOUT_RATE,
+      monthlyPayment,
+      remainingMonths: BAILOUT_MONTHS,
+      takenAtYear: state.gameTime.year,
+      takenAtMonth: state.gameTime.month,
+    };
+
+    const newLoans = [...state.loans, loan];
+    const newDebt = newLoans.reduce((sum, l) => sum + l.monthlyPayment * l.remainingMonths, 0);
+    set({
+      loans: newLoans,
+      bailoutUsed: true,
+      gamePhase: 'playing',
+      finance: { ...state.finance, cash: state.finance.cash + BAILOUT_CASH, debt: newDebt },
+    });
+    get().addNotification(`緊急支援として${formatMoney(BAILOUT_CASH)}を受け取りました（返済義務あり）`, 'warning');
   },
 
   setCameraMode: (mode: CameraMode) => {
@@ -533,6 +604,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       lastDevelopmentDay: 0,
       lastLevelUpMonth: 0,
       lastAutoSaveDay: 0,
+      scenarioStartYear: null,
+      scenarioCleared: false,
+      bailoutUsed: false,
       selectedTool: 'none',
       selectedTrainId: null,
       followTrainId: null,

@@ -482,3 +482,50 @@ test.describe('Confirm Dialog', () => {
     expect(result.after).toBe(0);
   });
 });
+
+test.describe('Bankruptcy & Emergency Bailout', () => {
+  test('going bankrupt shows the gameover screen, and emergency bailout returns to playing', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+
+    // 資金をマイナス・負債を上限超過にしてから月初(day=1, hour=0, minute=0)のtickを踏ませ、破産条件を満たす
+    await gameEval(page, `(() => {
+      const store = window.__gameStore;
+      const s = store.getState();
+      store.setState({
+        finance: { ...s.finance, cash: -5_000_000_000, debt: 999_999_999_999 },
+        constructionMode: false,
+        gameTime: { year: 2024, month: 4, day: 30, hour: 23, minute: 50 },
+      });
+      store.getState().tick();
+    })()`);
+
+    const phaseAfterBankruptcy = await gameEval(page, `window.__gameStore.getState().gamePhase`);
+    expect(phaseAfterBankruptcy).toBe('gameover');
+    await expect(page.getByText('経営破綻')).toBeVisible();
+
+    const cashBeforeBailout = await gameEval(page, `window.__gameStore.getState().finance.cash`);
+
+    await page.getByRole('button', { name: '緊急支援を受ける（1回限り）' }).click();
+
+    const state = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      const bailoutLoan = s.loans.find(l => l.principal === 240000000) ?? null;
+      return {
+        gamePhase: s.gamePhase,
+        cash: s.finance.cash,
+        bailoutUsed: s.bailoutUsed,
+        bailoutLoan,
+      };
+    })()`);
+
+    expect(state.gamePhase).toBe('playing');
+    expect(state.bailoutUsed).toBe(true);
+    expect(state.cash).toBe(cashBeforeBailout + 200_000_000);
+    expect(state.bailoutLoan).toBeTruthy();
+    expect(state.bailoutLoan.interestRate).toBe(0.08);
+    expect(state.bailoutLoan.remainingMonths).toBe(120);
+
+    await expect(page.getByText('経営破綻')).not.toBeVisible();
+  });
+});
