@@ -383,3 +383,102 @@ test.describe('Financial System', () => {
     expect(result.loans).toBe(1);
   });
 });
+
+test.describe('Panel Navigation & Shortcuts', () => {
+  test('G key opens the schedule panel', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    // Canvas内のKeyboardControlsのuseEffectがマウントされるまで少し待ってから押す
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('g');
+    await expect(page.getByText('ダイヤ設定')).toBeVisible();
+    const shown = await gameEval(page, `window.__gameStore.getState().showSchedulePanel`);
+    expect(shown).toBe(true);
+  });
+
+  test('O key opens the settings panel', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    await page.waitForTimeout(1500);
+    await page.keyboard.press('o');
+    await expect(page.getByText('マスター音量')).toBeVisible();
+    const shown = await gameEval(page, `window.__gameStore.getState().showSettingsPanel`);
+    expect(shown).toBe(true);
+  });
+
+  test('top bar buttons open schedule and settings panels', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    await page.getByRole('button', { name: /ダイヤ/ }).click();
+    expect(await gameEval(page, `window.__gameStore.getState().showSchedulePanel`)).toBe(true);
+    await page.getByRole('button', { name: /設定/ }).click();
+    expect(await gameEval(page, `window.__gameStore.getState().showSettingsPanel`)).toBe(true);
+  });
+});
+
+test.describe('Confirm Dialog', () => {
+  test('confirm dialog shows message and OK triggers the callback', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    await gameEval(page, `(() => {
+      window.__confirmTriggered = false;
+      window.__gameStore.getState().requestConfirm('テスト確認メッセージ', () => { window.__confirmTriggered = true; });
+    })()`);
+    await expect(page.getByText('テスト確認メッセージ')).toBeVisible();
+    await page.getByRole('button', { name: 'OK' }).click();
+    expect(await gameEval(page, `window.__confirmTriggered`)).toBe(true);
+    expect(await gameEval(page, `window.__gameStore.getState().confirmDialog`)).toBeNull();
+  });
+
+  test('confirm dialog cancel does not trigger the callback', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    await gameEval(page, `(() => {
+      window.__confirmTriggered = false;
+      window.__gameStore.getState().requestConfirm('テスト確認メッセージ2', () => { window.__confirmTriggered = true; });
+    })()`);
+    await expect(page.getByText('テスト確認メッセージ2')).toBeVisible();
+    await page.getByRole('button', { name: 'キャンセル' }).click();
+    expect(await gameEval(page, `window.__confirmTriggered`)).toBe(false);
+  });
+
+  test('bulldozing a station removes it', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      s.placeTrack(10, 25, 15, 25);
+      s.buildStation(12, 25);
+      const before = window.__gameStore.getState().stations.size;
+      s.bulldoze(12, 25);
+      const after = window.__gameStore.getState().stations.size;
+      return { before, after };
+    })()`);
+    expect(result.before).toBe(1);
+    expect(result.after).toBe(0);
+  });
+
+  test('bulldozing a train removes it', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+      for (let i = 10; i <= 30; i++) s.placeTrack(i, 25, i + 1, 25);
+      s.buildStation(10, 25);
+      s.buildStation(30, 25);
+      const stations = Array.from(window.__gameStore.getState().stations.values());
+      s.setSelectedTrainType('local');
+      s.placeTrain(stations[0].id);
+      // 駅タイル上では駅の撤去が優先されるため、列車を駅から離れた区間まで進める
+      for (let i = 0; i < 50; i++) s.tick();
+      const train = Array.from(window.__gameStore.getState().trains.values())[0];
+      const segment = window.__gameStore.getState().tracks.get(train.currentSegmentId);
+      const before = window.__gameStore.getState().trains.size;
+      s.bulldoze(segment.startX, segment.startZ);
+      const after = window.__gameStore.getState().trains.size;
+      return { before, after };
+    })()`);
+    expect(result.before).toBe(1);
+    expect(result.after).toBe(0);
+  });
+});

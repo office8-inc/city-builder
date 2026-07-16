@@ -11,6 +11,7 @@ import type {
   TerrainType,
 } from './types.ts';
 import { generateStationRoads } from './materials.ts';
+import { findTrainAtTile } from './trackUtils.ts';
 import {
   TRACK_COSTS,
   STATION_COSTS,
@@ -188,13 +189,44 @@ export function createRemoveTrack(set: SetFn, get: GetFn) {
   };
 }
 
+// 撤去ツールでタイルをクリックしたときに何が撤去対象になるかを判定する。
+// GridHelper（プレビュー表示）とScene.tsx（確認ダイアログの要否判断）の両方から共通利用する。
+export interface BulldozeTarget {
+  type: 'building' | 'subsidiary' | 'station' | 'train' | null;
+  id: string | null;
+  name: string;
+}
+
+export function getBulldozeTarget(state: GameState, x: number, z: number): BulldozeTarget {
+  const tile = state.map[x]?.[z];
+  if (!tile) return { type: null, id: null, name: '' };
+  if (tile.buildingId) {
+    return { type: 'building', id: tile.buildingId, name: '建物' };
+  }
+  if (tile.subsidiaryId) {
+    const sub = state.subsidiaries.get(tile.subsidiaryId);
+    return { type: 'subsidiary', id: tile.subsidiaryId, name: sub?.name ?? '施設' };
+  }
+  if (tile.stationId) {
+    const station = state.stations.get(tile.stationId);
+    return { type: 'station', id: tile.stationId, name: station ? `${station.name}駅` : '駅' };
+  }
+  const train = findTrainAtTile(state.trains, state.tracks, x, z);
+  if (train) {
+    return { type: 'train', id: train.id, name: train.name };
+  }
+  return { type: null, id: null, name: '' };
+}
+
 export function createBulldoze(set: SetFn, get: GetFn) {
   return (x: number, z: number) => {
     const state = get();
-    const { map, buildings, subsidiaries } = state;
+    const { map, buildings, subsidiaries, stations, trains } = state;
     const tile = map[x]?.[z];
     if (!tile) return;
-    if (tile.buildingId) {
+    const target = getBulldozeTarget(state, x, z);
+
+    if (target.type === 'building' && tile.buildingId) {
       const newBuildings = new Map(buildings);
       const building = newBuildings.get(tile.buildingId);
       if (building) {
@@ -208,12 +240,61 @@ export function createBulldoze(set: SetFn, get: GetFn) {
         set({ buildings: newBuildings });
         get().addNotification('建物を撤去しました', 'info');
       }
-    } else if (tile.subsidiaryId) {
+    } else if (target.type === 'subsidiary' && tile.subsidiaryId) {
       const newSubs = new Map(subsidiaries);
+      const sub = newSubs.get(tile.subsidiaryId);
       newSubs.delete(tile.subsidiaryId);
       tile.subsidiaryId = null;
       set({ subsidiaries: newSubs });
-      get().addNotification('施設を撤去しました', 'info');
+      get().addNotification(`${sub?.name ?? '施設'}を撤去しました`, 'info');
+    } else if (target.type === 'station' && tile.stationId) {
+      const newStations = new Map(stations);
+      const station = newStations.get(tile.stationId);
+      if (station) {
+        newStations.delete(tile.stationId);
+        tile.stationId = null;
+        // 残りの駅の乗降客数を再計算（駅数に応じて変動する既存ロジックに合わせる）
+        for (const s of newStations.values()) s.dailyPassengers = newStations.size * 100;
+
+        // この駅を発着地点に含む列車のダイヤから撤去した駅を除去
+        const newTrains = new Map(trains);
+        let trainsChanged = false;
+        for (const [tid, train] of newTrains) {
+          if (train.schedule.stops.some(stop => stop.stationId === station.id)) {
+            newTrains.set(tid, {
+              ...train,
+              schedule: {
+                ...train.schedule,
+                stops: train.schedule.stops.filter(stop => stop.stationId !== station.id),
+                currentStopIndex: 0,
+              },
+            });
+            trainsChanged = true;
+          }
+        }
+
+        set({
+          stations: newStations,
+          trains: trainsChanged ? newTrains : trains,
+        });
+        get().addNotification(`${station.name}駅を撤去しました`, 'info');
+      }
+    } else if (target.type === 'train' && target.id) {
+      const train = trains.get(target.id);
+      if (train) {
+        const newTrains = new Map(trains);
+        newTrains.delete(target.id);
+        const updates: Partial<GameState> = { trains: newTrains };
+        if (state.followTrainId === target.id) {
+          updates.followTrainId = null;
+          updates.cameraMode = 'free';
+        }
+        if (state.selectedTrainId === target.id) {
+          updates.selectedTrainId = null;
+        }
+        set(updates);
+        get().addNotification(`${train.name}を撤去しました`, 'info');
+      }
     }
   };
 }

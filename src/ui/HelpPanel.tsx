@@ -2,13 +2,18 @@ import { useGameStore } from '../game/store.ts';
 
 const SHORTCUTS = [
   { key: 'Space', desc: '一時停止/再開' },
-  { key: '1-4', desc: '速度変更' },
+  { key: '1-5', desc: '速度変更' },
   { key: 'F', desc: '財務パネル' },
-  { key: 'T', desc: '車窓モード' },
-  { key: 'H', desc: 'ヘルプ表示/非表示' },
+  { key: 'G', desc: 'ダイヤ設定パネル' },
+  { key: 'O', desc: '設定パネル' },
+  { key: 'H / ?', desc: 'ヘルプ表示/非表示' },
+  { key: 'T', desc: '車窓モード切替' },
+  { key: 'V', desc: '視点切替（車窓: 追尾⇄運転台 / 通常: クォータービュー）' },
+  { key: 'Q / E', desc: 'クォータービューで回転' },
+  { key: 'W A S D', desc: 'クォータービューで移動' },
+  { key: 'Tab', desc: '列車切替（車窓モード中）' },
   { key: 'S', desc: 'セーブ' },
   { key: 'L', desc: 'ロード' },
-  { key: 'Tab', desc: '列車切替（車窓モード中）' },
   { key: 'Esc', desc: 'ツール解除/パネルを閉じる' },
 ];
 

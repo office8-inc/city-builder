@@ -119,6 +119,29 @@ export function getStationAtPosition(
 }
 
 /**
+ * Find a train currently occupying the track segment touching the given tile
+ * (BuildingInfo/GridHelper/bulldoze で共通利用する、タイル上の列車検出ロジック)。
+ */
+export function findTrainAtTile(
+  trains: Map<string, Train>,
+  tracks: Map<string, TrackSegment>,
+  x: number,
+  z: number,
+): Train | null {
+  for (const train of trains.values()) {
+    const segment = tracks.get(train.currentSegmentId);
+    if (!segment) continue;
+    if (
+      (segment.startX === x && segment.startZ === z) ||
+      (segment.endX === x && segment.endZ === z)
+    ) {
+      return train;
+    }
+  }
+  return null;
+}
+
+/**
  * Get the next target station ID from the train's schedule.
  */
 function getNextTargetStationId(train: Train): string | undefined {

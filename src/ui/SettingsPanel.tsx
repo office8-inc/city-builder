@@ -13,7 +13,7 @@ export function SettingsPanel() {
   if (!showSettingsPanel) return null;
 
   return (
-    <div className="w-64 p-3 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 text-white shadow-lg">
+    <div className="w-64 p-3 rounded-xl bg-black/50 backdrop-blur-md border border-white/10 text-white shadow-lg max-h-[80vh] overflow-y-auto">
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-bold text-white/70 uppercase tracking-wider">設定</span>
         <button
@@ -90,10 +90,13 @@ export function SettingsPanel() {
         <div className="flex justify-between"><span>一時停止</span><span>Space</span></div>
         <div className="flex justify-between"><span>速度 1-5</span><span>1-5</span></div>
         <div className="flex justify-between"><span>財務</span><span>F</span></div>
+        <div className="flex justify-between"><span>ダイヤ設定</span><span>G</span></div>
+        <div className="flex justify-between"><span>設定</span><span>O</span></div>
         <div className="flex justify-between"><span>ヘルプ</span><span>H / ?</span></div>
         <div className="flex justify-between"><span>車窓モード</span><span>T</span></div>
         <div className="flex justify-between"><span>視点切替</span><span>V</span></div>
-        <div className="flex justify-between"><span>回転 (QV)</span><span>Q / E</span></div>
+        <div className="flex justify-between"><span>回転（クォータービュー）</span><span>Q / E</span></div>
+        <div className="flex justify-between"><span>移動（クォータービュー）</span><span>WASD</span></div>
         <div className="flex justify-between"><span>列車切替</span><span>Tab</span></div>
         <div className="flex justify-between"><span>セーブ</span><span>S</span></div>
         <div className="flex justify-between"><span>ロード</span><span>L</span></div>

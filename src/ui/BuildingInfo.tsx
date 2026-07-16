@@ -1,5 +1,6 @@
 import { useGameStore } from '../game/store.ts';
 import { TERRAIN_COLORS, formatMoney } from '../game/constants.ts';
+import { findTrainAtTile } from '../game/trackUtils.ts';
 
 const TERRAIN_LABELS: Record<string, string> = {
   flat: '平地',
@@ -42,18 +43,7 @@ export function BuildingInfo() {
   const subsidiary = tile.subsidiaryId ? subsidiaries.get(tile.subsidiaryId) : null;
 
   // Check for train on a segment covering this tile
-  let trainAtTile = null;
-  for (const train of trains.values()) {
-    const segment = tracks.get(train.currentSegmentId);
-    if (!segment) continue;
-    if (
-      (segment.startX === hoveredTile.x && segment.startZ === hoveredTile.z) ||
-      (segment.endX === hoveredTile.x && segment.endZ === hoveredTile.z)
-    ) {
-      trainAtTile = train;
-      break;
-    }
-  }
+  const trainAtTile = findTrainAtTile(trains, tracks, hoveredTile.x, hoveredTile.z);
 
   return (
     <div className="p-3 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-white text-xs shadow-lg min-w-[140px]">

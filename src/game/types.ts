@@ -263,6 +263,14 @@ export interface GameNotification {
   severity: 'info' | 'warning' | 'error' | 'success';
 }
 
+// === Confirm Dialog ===
+// 破壊的な操作（駅・列車・子会社の撤去、ロードによる進行状況の上書き等）の前に
+// ユーザーに確認を求めるための汎用モーダル状態
+export interface ConfirmDialogState {
+  message: string;
+  onConfirm: () => void;
+}
+
 // === Game State ===
 export interface GameState {
   map: MapTile[][];
@@ -311,6 +319,7 @@ export interface GameState {
   showSchedulePanel: boolean;
   showSettingsPanel: boolean;
   selectedTrainId: string | null;
+  confirmDialog: ConfirmDialogState | null;
 
   cameraMode: CameraMode;
   followMode: FollowMode;
@@ -337,6 +346,8 @@ export interface GameState {
   toggleHelpPanel: () => void;
   toggleSchedulePanel: () => void;
   toggleSettingsPanel: () => void;
+  requestConfirm: (message: string, onConfirm: () => void) => void;
+  closeConfirm: () => void;
   setGamePhase: (phase: GamePhase) => void;
   nextTutorialStep: () => void;
   skipTutorial: () => void;

@@ -65,8 +65,18 @@ function TopBar() {
   const season = useGameStore(s => s.season);
   const weatherType = useGameStore(s => s.weatherType);
   const toggleFinancePanel = useGameStore(s => s.toggleFinancePanel);
+  const toggleSchedulePanel = useGameStore(s => s.toggleSchedulePanel);
+  const toggleSettingsPanel = useGameStore(s => s.toggleSettingsPanel);
   const saveGame = useGameStore(s => s.saveGame);
   const loadGame = useGameStore(s => s.loadGame);
+  const requestConfirm = useGameStore(s => s.requestConfirm);
+
+  const handleLoad = () => {
+    requestConfirm(
+      'ロードすると保存されていない進行状況は失われます。よろしいですか？',
+      () => loadGame()
+    );
+  };
 
   return (
     <div className="absolute top-2 left-16 right-2 flex items-center justify-between px-5 py-2.5 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 text-white shadow-lg">
@@ -99,14 +109,24 @@ function TopBar() {
         <CabViewButton />
         <div className="flex gap-1 ml-1">
           <button
+            onClick={toggleSchedulePanel}
+            className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
+            title="ダイヤ設定 (G)"
+          >🚆 ダイヤ</button>
+          <button
+            onClick={toggleSettingsPanel}
+            className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
+            title="設定 (O)"
+          >⚙️ 設定</button>
+          <button
             onClick={() => saveGame()}
             className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
-            title="セーブ"
+            title="セーブ (S)"
           >💾</button>
           <button
-            onClick={() => loadGame()}
+            onClick={handleLoad}
             className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-all"
-            title="ロード"
+            title="ロード (L)"
           >📂</button>
         </div>
       </div>
@@ -143,18 +163,11 @@ export function HUD() {
         <MiniMap />
       </div>
 
-      {/* Finance panel */}
-      <div className="pointer-events-auto absolute top-16 left-16">
+      {/* 財務・ダイヤ・設定パネル: 開いているものだけflexで自動整列し、
+          画面幅が足りない場合は折り返す（固定オフセットによる画面外はみ出しを防ぐ） */}
+      <div className="pointer-events-auto absolute top-16 left-16 right-2 flex flex-wrap items-start gap-2">
         <FinancePanel />
-      </div>
-
-      {/* Schedule panel */}
-      <div className="pointer-events-auto absolute top-16 left-[22rem]">
         <SchedulePanel />
-      </div>
-
-      {/* Settings panel */}
-      <div className="pointer-events-auto absolute top-16 left-[40rem]">
         <SettingsPanel />
       </div>
 

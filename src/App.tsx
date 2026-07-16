@@ -3,6 +3,7 @@ import { HUD } from './ui/HUD.tsx';
 import { TitleScreen } from './ui/TitleScreen.tsx';
 import { Tutorial } from './ui/Tutorial.tsx';
 import { HelpPanel } from './ui/HelpPanel.tsx';
+import { ConfirmDialog } from './ui/ConfirmDialog.tsx';
 import { MapEditor } from './ui/MapEditor.tsx';
 import { useGameStore } from './game/store.ts';
 import { formatMoney } from './game/constants.ts';
@@ -81,6 +82,7 @@ export default function App() {
         </>
       )}
       <HelpPanel />
+      <ConfirmDialog />
     </div>
   );
 }

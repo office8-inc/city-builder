@@ -17,6 +17,7 @@ import { useGameStore } from '../game/store.ts';
 import { GRID_SIZE } from '../game/constants.ts';
 import { worldToGrid, isValidGridPosition } from '../utils/grid.ts';
 import { advanceTrainPosition } from '../game/trackUtils.ts';
+import { getBulldozeTarget } from '../game/actions.ts';
 
 function SimulationLoop() {
   const tick = useGameStore(s => s.tick);
@@ -82,6 +83,7 @@ function InteractionPlane() {
   const placeSignal = useGameStore(s => s.placeSignal);
   const buyLand = useGameStore(s => s.buyLand);
   const sellLand = useGameStore(s => s.sellLand);
+  const requestConfirm = useGameStore(s => s.requestConfirm);
 
   const dragStartRef = useRef<{ x: number; z: number } | null>(null);
 
@@ -139,7 +141,16 @@ function InteractionPlane() {
     } else if (selectedTool === 'track_remove') {
       removeTrack(gridPos.x, gridPos.z);
     } else if (selectedTool === 'bulldoze') {
-      bulldoze(gridPos.x, gridPos.z);
+      const target = getBulldozeTarget(useGameStore.getState(), gridPos.x, gridPos.z);
+      if (target.type === 'station' || target.type === 'train' || target.type === 'subsidiary') {
+        // 駅・列車・子会社の撤去は元に戻せないため確認ダイアログを挟む（線路・建物の撤去は確認不要）
+        requestConfirm(
+          `${target.name}を撤去します。返金はありません。よろしいですか？`,
+          () => useGameStore.getState().bulldoze(gridPos.x, gridPos.z)
+        );
+      } else {
+        bulldoze(gridPos.x, gridPos.z);
+      }
     } else if (selectedTool === 'signal_place') {
       placeSignal(gridPos.x, gridPos.z);
     } else if (selectedTool === 'land_buy') {
@@ -147,7 +158,7 @@ function InteractionPlane() {
     } else if (selectedTool === 'land_sell') {
       sellLand(gridPos.x, gridPos.z);
     }
-  }, [selectedTool, placeTrack, buildStation, placeTrain, buildSubsidiary, removeTrack, bulldoze, placeSignal, buyLand, sellLand]);
+  }, [selectedTool, placeTrack, buildStation, placeTrain, buildSubsidiary, removeTrack, bulldoze, placeSignal, buyLand, sellLand, requestConfirm]);
 
   const handlePointerLeave = useCallback(() => {
     setHoveredTile(null);
@@ -179,6 +190,8 @@ function KeyboardControls() {
       // Don't handle shortcuts during title phase (except Escape)。
       // チュートリアル中は最終ステップの「Fキーで財務パネル」等の案内を機能させるため許可する
       if (state.gamePhase !== 'playing' && state.gamePhase !== 'tutorial' && e.key !== 'Escape') return;
+      // 確認ダイアログ表示中はEscape（キャンセル）以外のショートカットを無効化する
+      if (state.confirmDialog && e.key !== 'Escape') return;
 
       switch (e.key) {
         case '1': setSpeed(1); break;
@@ -203,6 +216,14 @@ function KeyboardControls() {
         case 'T':
           state.setCameraMode(state.cameraMode === 'follow' ? 'free' : 'follow');
           break;
+        case 'g':
+        case 'G':
+          state.toggleSchedulePanel();
+          break;
+        case 'o':
+        case 'O':
+          state.toggleSettingsPanel();
+          break;
         case 'v':
         case 'V':
           if (state.cameraMode === 'follow') {
@@ -217,12 +238,21 @@ function KeyboardControls() {
           break;
         case 'l':
           if (!e.ctrlKey && !e.metaKey) {
-            state.loadGame();
-            state.setGamePhase('playing');
+            // ロードすると現在の進行状況が失われるため確認ダイアログを挟む
+            state.requestConfirm(
+              'ロードすると保存されていない進行状況は失われます。よろしいですか？',
+              () => {
+                const s = useGameStore.getState();
+                s.loadGame();
+                s.setGamePhase('playing');
+              }
+            );
           }
           break;
         case 'Escape': {
-          if (state.showHelpPanel) {
+          if (state.confirmDialog) {
+            state.closeConfirm();
+          } else if (state.showHelpPanel) {
             state.toggleHelpPanel();
           } else if (state.showFinancePanel) {
             state.toggleFinancePanel();

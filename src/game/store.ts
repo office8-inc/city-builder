@@ -118,6 +118,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   showSchedulePanel: false,
   showSettingsPanel: false,
   selectedTrainId: null,
+  confirmDialog: null,
 
   // Camera
   cameraMode: 'free',
@@ -399,6 +400,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   toggleHelpPanel: () => set(s => ({ showHelpPanel: !s.showHelpPanel })),
   toggleSchedulePanel: () => set(s => ({ showSchedulePanel: !s.showSchedulePanel })),
   toggleSettingsPanel: () => set(s => ({ showSettingsPanel: !s.showSettingsPanel })),
+  requestConfirm: (message: string, onConfirm: () => void) => set({ confirmDialog: { message, onConfirm } }),
+  closeConfirm: () => set({ confirmDialog: null }),
 
   setGamePhase: (phase: GamePhase) => set({ gamePhase: phase }),
 

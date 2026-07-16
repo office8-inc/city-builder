@@ -3,12 +3,15 @@ import * as THREE from 'three';
 import { useGameStore } from '../game/store.ts';
 import { GRID_SIZE } from '../game/constants.ts';
 import { getTileWorldHeight } from '../game/terrain.ts';
+import { findTrainAtTile } from '../game/trackUtils.ts';
 
 export function GridOverlay() {
   const hoveredTile = useGameStore(s => s.hoveredTile);
   const selectedTool = useGameStore(s => s.selectedTool);
   const map = useGameStore(s => s.map);
   const ownedLand = useGameStore(s => s.ownedLand);
+  const trains = useGameStore(s => s.trains);
+  const tracks = useGameStore(s => s.tracks);
 
   const highlight = useMemo(() => {
     if (!hoveredTile || selectedTool === 'none') return null;
@@ -55,8 +58,10 @@ export function GridOverlay() {
         canPlace = tile.trackIds.length > 0;
         break;
       case 'bulldoze':
-        // createBulldoze: 建物または子会社があるタイルのみ撤去可
-        canPlace = tile.buildingId !== null || tile.subsidiaryId !== null;
+        // createBulldoze: 建物・子会社・駅があるタイル、またはこのタイルの線路区間上に
+        // 列車がいる場合のみ撤去可
+        canPlace = tile.buildingId !== null || tile.subsidiaryId !== null || tile.stationId !== null ||
+          findTrainAtTile(trains, tracks, hoveredTile.x, hoveredTile.z) !== null;
         break;
       case 'land_buy': {
         // createBuyLand: まだ所有していない土地のみ購入可
@@ -79,7 +84,7 @@ export function GridOverlay() {
     const worldY = getTileWorldHeight(tile) + 0.05;
 
     return { x: worldX, z: worldZ, y: worldY, valid: canPlace };
-  }, [hoveredTile, selectedTool, map, ownedLand]);
+  }, [hoveredTile, selectedTool, map, ownedLand, trains, tracks]);
 
   return (
     <group>
