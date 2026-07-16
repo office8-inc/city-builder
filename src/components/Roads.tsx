@@ -113,13 +113,17 @@ export function Roads() {
   // generateRoads/generateStationRoadsはmapを直接ミューテートし配列参照は変わらないため、
   // roadRevisionを依存に加えて道路生成イベントごとに再計算させる
   const roadRevision = useGameStore(s => s.roadRevision);
+  // 道路の描画可否はtile.trackIds.length（線路の有無）にも依存する。線路の敷設/撤去も
+  // タイルのtrackIdsを直接ミューテートするため、tracksの参照変化を検知して再計算させる
+  const tracks = useGameStore(s => s.tracks);
   const hour = useGameStore(s => s.gameTime.hour);
   const isNight = hour < 6 || hour >= 18;
 
   const { roadTiles, lightPositions } = useMemo(() => {
-    // roadRevisionはmap内のroadLevelミューテーションを検知するためのキャッシュ無効化トリガー
-    // （値自体は使わないが、依存配列に含めるために参照する）
+    // roadRevisionとtracksは値自体を使わないキャッシュ無効化トリガー
+    // （map内のroadLevel/trackIdsミューテーションを検知するために依存配列へ含める）
     void roadRevision;
+    void tracks;
     const tiles: RoadTileInfo[] = [];
     const lights: [number, number, number][] = [];
 
@@ -169,7 +173,7 @@ export function Roads() {
       }
     }
     return { roadTiles: tiles, lightPositions: lights };
-  }, [map, roadRevision]);
+  }, [map, roadRevision, tracks]);
 
   if (roadTiles.length === 0) return null;
 
