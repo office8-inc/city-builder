@@ -158,7 +158,32 @@ function normalizeTrain(t: Train): Train {
 function normalizeStation(s: Station, tracks: Map<string, TrackSegment>): Station {
   const type = (s as unknown as Partial<Station>).type ?? 'ground_small';
   const defaultElevation = type === 'underground' ? -1 : type === 'elevated' ? 1 : 0;
-  const elevation = (s as unknown as Partial<Station>).elevation ?? defaultElevation;
+  const savedElevation = (s as unknown as Partial<Station>).elevation;
+  let elevation = savedElevation ?? defaultElevation;
+
+  // v1.0で地下線路のelevationクランプ（Math.max(0, elevation)）を撤廃する前のセーブでは、
+  // 地下線路ツールで敷設した区間が実際にはelevation:0として直列化されていた
+  // （駅側は既にtype:'underground'で保存されている）。station.elevationが存在しない
+  // （＝旧セーブ由来）場合に限り、type由来の推定elevationが実際の接続線路のどれにも
+  // 存在しなければ、空リストを返す代わりに実際に接続されている線路のelevation（多数派）を
+  // 駅のelevationとして採用する。「セーブに実際に入っている線路との整合」を
+  // 「typeからの理論値」より優先することで、旧・地下鉄駅の接続が全滅するのを防ぐ
+  if (savedElevation === undefined) {
+    const connectedElevations = s.connectedTracks
+      .map(tid => tracks.get(tid)?.elevation)
+      .filter((e): e is number => e !== undefined);
+    if (connectedElevations.length > 0 && !connectedElevations.includes(elevation)) {
+      const counts = new Map<number, number>();
+      for (const e of connectedElevations) counts.set(e, (counts.get(e) ?? 0) + 1);
+      let bestElevation = elevation;
+      let bestCount = -1;
+      for (const [e, count] of counts) {
+        if (count > bestCount) { bestCount = count; bestElevation = e; }
+      }
+      elevation = bestElevation;
+    }
+  }
+
   const connectedTracks = s.connectedTracks.filter(tid => (tracks.get(tid)?.elevation ?? 0) === elevation);
   return { ...s, type, elevation, connectedTracks };
 }

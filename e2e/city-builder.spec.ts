@@ -371,6 +371,56 @@ test.describe('Save/Load', () => {
     // 列車は地上(elevation:0)の線路上にスポーンすること（地下にスポーンしていない）
     expect(result.trainSegElevation).toBe(0);
   });
+
+  test('loading a legacy (pre-elevation-clamp-removal) subway station save keeps its connected tracks despite a type/elevation mismatch (P2-D)', async ({ page }) => {
+    await page.goto('/?autoplay');
+    await waitForStore(page);
+    const result = await gameEval(page, `(() => {
+      const s = window.__gameStore.getState();
+
+      // 現行コードで地下鉄駅を建設する（connectedTracksは本来elevation:-1の線路のみ）
+      s.setSelectedTool('track_underground');
+      s.placeTrack(80, 80, 82, 80);
+      s.setSelectedTool('none');
+      s.buildStation(81, 80, 'underground');
+
+      const station = Array.from(window.__gameStore.getState().stations.values())[0];
+      const connectedTrackIds = [...station.connectedTracks];
+
+      // セーブJSONを、v1.0で地下線路のelevationクランプ(Math.max(0, elevation))を撤廃する
+      // 前のフォーマットへ意図的に書き換える: station.elevationは存在せず(手がかりはtype:
+      // 'underground'のみ)、かつ実際の接続線路は当時のバグにより全てelevation:0で記録されていた
+      s.saveGame();
+      const raw = JSON.parse(localStorage.getItem('atrain-city-save'));
+      const stEntry = raw.stations.find(([id]) => id === station.id);
+      delete stEntry[1].elevation;
+      for (const [tid, t] of raw.tracks) {
+        if (connectedTrackIds.includes(tid)) t.elevation = 0;
+      }
+      localStorage.setItem('atrain-city-save', JSON.stringify(raw));
+
+      // ロードし直す
+      window.__gameStore.getState().loadGame();
+      const loadedStation = window.__gameStore.getState().stations.get(station.id);
+
+      // 修復されたconnectedTracksで実際に列車を配置できることも確認
+      s.setSelectedTrainType('local');
+      s.placeTrain(station.id);
+      const trainPlaced = window.__gameStore.getState().trains.size > 0;
+
+      return {
+        elevation: loadedStation.elevation,
+        connectedTracks: [...loadedStation.connectedTracks].sort(),
+        originalConnectedTrackIds: connectedTrackIds.sort(),
+        trainPlaced,
+      };
+    })()`);
+    // type由来の理論値(-1)ではなく、実際に接続されている線路のelevation(0)を採用していること
+    expect(result.elevation).toBe(0);
+    // 接続線路が全滅せず、元の接続線路がそのまま保持されていること
+    expect(result.connectedTracks).toEqual(result.originalConnectedTrackIds);
+    expect(result.trainPlaced).toBe(true);
+  });
 });
 
 test.describe('Console Error Check', () => {
