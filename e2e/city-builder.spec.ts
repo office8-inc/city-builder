@@ -28,7 +28,7 @@ async function buildCity(page: any) {
 test.describe('App Startup & Basic Rendering', () => {
   test('app loads with correct title', async ({ page }) => {
     await page.goto('/?autoplay');
-    await expect(page).toHaveTitle('City Builder');
+    await expect(page).toHaveTitle('A-Train City Builder');
   });
 
   test('canvas renders without errors', async ({ page }) => {
